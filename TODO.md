@@ -3,40 +3,84 @@
 Read this first in a new session, then `AGENTS.md` and `docs/ROADMAP.md`. Updated at the
 end of every session.
 
-Last session: 2026-09-29 (second session that day). P0 to P3 are done. P4 is done for the
-synchronous-machine set (GENROU, GENSAL, IEEET1, IEEEG1, IEEEG3, COMPLEXLOAD), P5 and P6 for
-the base case, and P7's PHPS gates pass on the base case against parity pack v4
-(published). P7 is closed on the PHPS gates (PowerFactory item dropped, LineFault / rk4
-left unsupported; see "Decided"). **New: the PowerFactory driver** (`pf/`, PowerFactory
-2022 SP1): model dump, RMS runs of Porthos scenarios, and a Julia comparison; Porthos
-matches PowerFactory on the base bus-16 fault more closely than PHPS's own record. The
-converters come after the P5 to P7 slice. The test suite passes (1613 tests, about 2.5 minutes: the P7 gate runs the full
-6 s BDF1); the only tests marked broken are the P5 and P6 converter cases.
+Last reviewed: 2026-10-01 (overnight session, the user away; no questions asked, decisions
+recorded under "Needs the user"). P0 to P3 are implemented. P4 is done for the
+synchronous-machine set and, **new, for the grid-forming converters** (GFM_VSM, GFM_DROOP,
+GFM_VOC). P5 passes on base, vsm, droop and voc; P6 passes on base, vsm and voc, and on
+droop everything but the residual (1.4e-12 against the 1e-12 gate: a Float64 floor, see
+"Needs the user" 1). P7's PHPS gates pass on the base case; the converter cases need parity
+pack v6 (generated and bound locally this session, **not published**; see P7 in the table).
+Route B (structure-search LMI) now runs to validated, interval-checked results. The P0
+Windows test-harness error is fixed. The PowerFactory driver is as before. **Full suite
+with pack v6 (2026-10-01): 2916 passes, 4 failures, 2 broken** (the GFL skips). The four
+failures are the droop P6 residual and the three converter IDA gates, all explained under
+"Needs the user" A and F; nothing else fails.
 
-**Committed** on `master`: everything through P10. Pushed up to `6cde92f` (P7); the later
-commits (P7 closed, PowerFactory driver, P10) are not pushed yet. **Parity pack v5 is
-published** (release `parity-pack-v5`, sha256
-`e5c93ce896d8f9962d67f8cd7eee0acd133f5548e2061b5c4009f6e4182fd1a2`, tree hash
-`0248a827ea878355200936af668a1901621fa8c6`, both checked on the downloaded file), so
-pushing is safe for CI.
+**Committed** on `master`: everything through P10 plus the governor and terminal passivity
+diagnostics. `origin/master` is at `795d6a3` (P10); the three later diagnostic commits are
+not pushed yet. **Everything from this session is uncommitted** (the user said not to commit
+without asking): Route B (`src/ph/structure.jl`, `ext/PorthosJuMPExt`, `scripts/storage_search.jl`),
+the converter models (`src/components/converters/`), converter initialisation
+(`src/init/components.jl`, `src/init/equilibrium.jl`), the generator changes
+(`parity/generate/components.py`, `generate_pack.py`), `Artifacts.toml` (bound to v6),
+tests, `parity/README.md`, this file. **Do not push before pack v6 is published**: CI would
+fail to download it.
 
 ## Status by phase
 
 | Phase | State | Gate |
 |---|---|---|
-| P0 environment + parity pack | done | Pack v4 is bound and published (release `parity-pack-v4`); it loads and every hash checks, locally and from the download. |
+| P0 environment + parity pack | done | Pack v5 published; pack v6 generated and bound locally (not published). The tamper test no longer uses `chmod`: its copies are written as new files (the `EINVAL` on Windows came from the artifact's permissions). |
 | P1 input / output | done | All 60 JSON under `cases/` load, validate and round-trip; all 200 PHPS case files also load (optional test, runs when PHPS_Opt is present). |
 | P2 network | done | Y-bus (power-flow and DAE), load admittances, Norton stamps and fault shunts equal PHPS **bit for bit** on all 6 parity cases (gate asks for 1e-12). |
 | P3 power flow | done | `V`/`theta` match PHPS within 4e-15 (gate 1e-8), same iteration counts; the case `v0`/`a0` within 1e-6 / 2e-6 relative to the slack (gate as reworded, see "Decided"). |
 | P4 components, items 1 to 3 | done | GENROU_PHTRUE, GENSAL_PHTRUE, IEEET1_PHTRUE, IEEEG1_PHTRUE, IEEEG3_PHTRUE, COMPLEXLOAD: at 200 samples each, all 43 state-dependent branch sites agree with PHPS and each goes both ways; rhs, both output sets, injection, H and grad H within rtol 1e-12 (rhs bit-identical at 1190 of 1200 samples); parameters identical to PHPS's; contract entry identical. `rhs!` / `outputs!` are type-stable and allocation-free; ForwardDiff Jacobians checked. |
-| P4 items 4 and 5 (converters) | after P7 | per the roadmap order of work |
-| P5 assembly | done for base | Against PHPS's **compiled C++** `dae_residual` (the function IDA and BDF1 solve): f and g at the equilibrium bit-identical, at 50 random states fault off and on within 1.3e-14 (gate 1e-12; 1228 of 28100 values differ in the last bits, from sin/cos of different math libraries). Layout, wiring, Y-bus, loads, COI and faults identical. Structural Jacobian pattern checked against ForwardDiff. gfl, vsm, droop, voc: `@test_skip` until their models are ported. |
-| P6 initialisation | done for base | Residual at Porthos's equilibrium 2.7e-13 (gate 1e-12). Distance to PHPS's equilibrium 9.0e-10, within the allowance 7.2e-7 = `||J^+||` (67) times the residual at PHPS's point (1.07e-8, PHPS's own residual). All initialised parameters (Efd0, Tm0, Vref, Pref, PFD_REF, PM_REF, V0, Vini) within 8.4e-10 of PHPS's. The first pass reproduces PHPS's pre-refinement state within 1e-12. Converter cases pending. |
-| P7 simulation | done for base | Pack v4, `test/parity/p7_sim.jl`, all from PHPS's initialised state and parameters. **BDF1** vs PHPS's compiled BDF1: max 1.7e-11 over the whole 6 s (gate 1e-9), the same 268 non-converged steps, the first at the same time. **IDA at 1e-10** vs PHPS IDA at 1e-10: max 1.2e-7 before the first sliding mode (gate 1e-6), 4.1e-3 after it over 15 s (reported). The sliding-mode start comes from the pack: the first run of at least 10 consecutive non-converged BDF1 steps on one equation (IEEEG3_11.xp, 239 steps from 1.324 s; limiter crossings cost 1 to 3). **CSV**: header identical, the 20 complete rows (states and observables) within 2.5e-10 (gate 1e-9, chosen by the agent: the trajectory gate). **IDA production**: 1.7e-2 from PHPS's (reported; step sequences differ). PowerFactory item dropped and LineFault / rk4 unsupported (user decisions). |
-| P10 PH audits | tools and gate done (base) | `src/ph/` (storage, reduced field and exact Jacobian, physical projection, shifted-storage audit, port models), `test/parity/p10_ph.jl` against pack v5, `scripts/ph_audit.jl`. Shifted storage at PHPS's point: rank 54/171, 41 positive eigenvalues of sym(SA), max 12.882693018 (PHPS 12.882693020, which differenced; Porthos's Jacobian is exact), min within 3.4e-10, exact counterexamples along the top eigenvector within 1e-9; held states = the ten IEEET1 `xr` (Tr = 0). Governor ports: all nine IEEEG1 at speed -> Tm match PHPS's KYP and exact-arithmetic records to 1e-15 (crossing 1.934717940050879 rad/s); KYP infeasibility certified in the frequency domain. Open: the port-residual audit; the LMI solver (JuMP extension) with the storage search. |
+| P4 item 5 (grid-forming converters) | done | GFM_VSM_PHTRUE, GFM_DROOP_PHTRUE, GFM_VOC_PHTRUE against pack v6 (local): branches agree, rhs bit-identical at 199/200, 200/200, 200/200 samples; parameters and contracts identical. Each type also has one **parameter variant** (pf_frame on, VSM field controller, droop adaptive droop and Zv, VOC current-reference limiter) so the dormant branches are checked too. The 60-step virtual-impedance bisection is a root solve (`vi_bisection`): its comparisons are not branch sites, its ForwardDiff derivative is the implicit-function one (value bit for bit). One VOC site (`pvoc_mode = 1`) has no PHPS Python reference (py_codegen lacks `tanh`) and is recorded as unreached. Allocation-free, type-stable, Jacobians checked (unit tests). |
+| P4 item 4 (GFL, GFL_ZIF) | waits | for the GFL reservoir model (control discussion) |
+| P5 assembly | done for base and the GFM cases | Against PHPS's **compiled C++** `dae_residual`: base, vsm, droop, voc within the 1e-12 gate, all but 1228 / 1104 / 454 / 326 values bit-identical (the rest differ in the last bits: sin/cos of different math libraries). Layout, wiring, Y-bus, loads, COI and faults identical. gfl: `@test_skip` until GFL is ported. |
+| P6 initialisation | done for base, vsm, voc; droop residual 1.4e-12 | Base as before (residual 2.7e-13, 9.0e-10 from PHPS). Converters: PHPS keeps each converter's Norton source u_out at its first-pass value and recaptures the set-points (p_set, u_set, q_set, PSET_REF, V_nom) at the final bus voltage (checked on the pack: u_out unchanged to 1.6e-14, no polish). Porthos does the same: in the Newton solve each converter's set-point rows are replaced by "Norton current = first-pass value", the set-points are recaptured after it (`converter_init`), and the lag states are settled on their own equations in Float64 (`lag_states`, `_settle_lags!`). vsm: residual 2.1e-13, voc 4.3e-13, droop **1.4e-12 (fails the 1e-12 gate)**; all three 3.2e-9 from PHPS (allowed about 2e-5), first pass within 1e-12, every initialised parameter within 3.2e-9 of PHPS's. |
+| P7 simulation | done for base; converters: BDF1 and CSV pass, IDA gate fails | Pack v4, `test/parity/p7_sim.jl`, all from PHPS's initialised state and parameters. **BDF1** vs PHPS's compiled BDF1: max 1.7e-11 over the whole 6 s (gate 1e-9), the same 268 non-converged steps, the first at the same time. **IDA at 1e-10** vs PHPS IDA at 1e-10: max 1.2e-7 before the first sliding mode (gate 1e-6), 4.1e-3 after it over 15 s (reported). The sliding-mode start comes from the pack: the first run of at least 10 consecutive non-converged BDF1 steps on one equation (IEEEG3_11.xp, 239 steps from 1.324 s; limiter crossings cost 1 to 3). **CSV**: header identical, the 20 complete rows (states and observables) within 2.5e-10 (gate 1e-9, chosen by the agent: the trajectory gate). **IDA production**: 1.7e-2 from PHPS's (reported; step sequences differ). PowerFactory item dropped and LineFault / rk4 unsupported (user decisions). **Converter cases (pack v6, local):** BDF1 vs PHPS's compiled BDF1: vsm 1.2e-11, droop 1.6e-11, voc 6.3e-11 (gate 1e-9), the same non-converged steps (127, 523, 9); CSV header identical, rows within 2.7e-10. **IDA at 1e-10 fails its 1e-6 gate**: 9.6e-3 (vsm), 2.9e-4 (droop), 6.1e-3 (voc) before the detected sliding mode (vsm 2.269 s, droop 1.4165 s, voc none). IDA agrees with PHPS to about 1e-7 through the fault and clearing, then departs at an isolated limiter event: vsm 1.355 s and droop 1.405 s (IEEEG3_11 pilot valve), voc 1.955 s (IEEEG1_10 valve). Diagnosis: Porthos's own IDA at 1e-10 and 1e-11 separates at the same time in voc (4.3e-4 at 1.950 s), and in vsm IDA at 1e-11 fails at 1.3365 s (h = 3e-11); so the IDA solution there depends on tolerance and step placement, as the base case's after its sliding mode; BDF1's 1e-11 agreement shows the models are the same. See "Needs the user" F. |
+| P10 PH audits | parity gate done; phase partial (base) | `src/ph/` (storage, reduced field and exact Jacobian, physical projection, shifted-storage audit, port models), `test/parity/p10_ph.jl` against pack v5, `scripts/ph_audit.jl`. Shifted storage at PHPS's point: rank 54/171, 41 positive eigenvalues of sym(SA), max 12.882693018 (PHPS 12.882693020, which differenced; Porthos's Jacobian is exact), min within 3.4e-10, exact counterexamples along the top eigenvector within 1e-9; held states = the ten IEEET1 `xr` (Tr = 0). Governor ports: all nine IEEEG1 at speed -> Tm match PHPS's KYP and exact-arithmetic records to 1e-15 (crossing 1.934717940050879 rad/s); KYP infeasibility certified in the frequency domain. Route B structure search (`src/ph/structure.jl`, `decay_margin` in the JuMP extension, `scripts/storage_search.jl`): decay-margin SDP per pattern with interval-checked dual certificates and Lyapunov checks (results under "Route B results"). Open: the port-residual audit. |
 | P8, P9, P11, P12 | not started | |
 
 ## Needs the user
+
+New from the overnight session (2026-10-01):
+
+A. **P6 droop residual: 1.42e-12 against the 1e-12 gate.** Everything else in P6 passes on
+   droop (3.2e-9 from PHPS, allowed 2.6e-5; parameters within 3.2e-9). The rows left are the
+   measured-current lags (I - I_meas)/Tmeas_i: I = (u_out - V)/(j Zseries) carries the
+   rounding of u_out divided by Zseries = 0.0143 (1.5e-14 at |I| = 7 pu), then 1/Tmeas_i = 200
+   (1.4e-12 is one to two ulps of I). In the droop, u_out depends on I_meas through
+   r_vi = Zseries (loop gain 1), so no floating-point I_meas zeroes both rows; Newton plus the
+   lag settling reaches 1.42e-12 (vsm 2.1e-13 and voc 4.3e-13 pass). The gate was not
+   loosened and the test fails. Options: keep it failing; or state the gate per row relative
+   to the row's scale (e.g. |f_i| <= 1e-12 max(1, |a_i|/T_i)); or accept 2e-12. Your call.
+B. **Publish parity pack v6?** Generated this session from PHPS ba11ea1 (same docs-only
+   dirt), bound locally in `Artifacts.toml`; tarball `parity/dist/parity_pack-v6.tar.gz`
+   (hashes under "Decided"). Publishing it (GitHub release `parity-pack-v6`, as v3 to v5) is
+   outward-facing and waits for your approval; until then do not push `master`.
+C. **P4 gate reading for the converters** (agent's choices, please confirm): the
+   comparisons inside the 60-step virtual-impedance bisection are treated as a root solve,
+   not branch sites (marked `in_loop` in the pack, not matched; the regime switch after the
+   loop is matched); one parameter variant per converter type exercises the branches the
+   case parameters keep fixed (stronger than exempting them); the VOC `pvoc_mode = 1` site
+   is recorded as unreached because PHPS's Python kernel translation (`py_codegen`) has no
+   `tanh`, so PHPS itself cannot run that mode outside C++ (a PHPS finding; no case uses it).
+D. **Route B results** (below) need the method discussion: a strictly decaying quadratic
+   storage needs machine-to-machine couplings across units; which physical storage terms
+   those should become is a control question.
+E. **Commit**: nothing from this session is committed.
+F. **P7 IDA gate on the converter cases** (fails, not loosened): the gate's "until the first
+   limiter enters a sliding mode", detected as 10 or more consecutive non-converged BDF1
+   steps on one equation, does not cover the isolated limiter events (IEEEG3 pilot valve,
+   IEEEG1 valve) after which IDA at 1e-10 already depends on its step placement (evidence in
+   the P7 row). Options: gate until the first limiter event after the fault is cleared (a
+   rule to agree on), or add event detection on the switching surfaces (roadmap 2.3) so IDA
+   steps onto the kinks, or keep IDA reported-only on these cases with BDF1 as the exact
+   check (as after the sliding mode on the base case).
+
+Earlier items:
 
 1. **Clarabel** is left out of the JuMP extension. Clarabel pins TimerOutputs 0.5, and the
    SciML stack (NonlinearSolveBase via Sundials and NonlinearSolve) needs TimerOutputs 1.x,
@@ -49,6 +93,24 @@ pushing is safe for CI.
    60 Hz (all parity cases) and the correct one at 50 Hz.
 3. The P6 check of the initialised parameters uses an absolute tolerance of 1e-8 chosen by
    the agent (the roadmap gives none); the actual differences are below 8.4e-10.
+
+## Decided (2026-10-01, overnight, by the agent; see "Needs the user" to revisit)
+
+- **Parity pack v6 generated and bound locally, not published**: `parity/pack-v6`, tarball
+  `parity/dist/parity_pack-v6.tar.gz`, sha256
+  `400974ee39cb16ac45c9628916facbf21583fa225bad0af4d863d7219b050136`, tree hash
+  `c99fe023705c11cc10260a9dcbc608421daa3cb8`. Against v5 it adds 21 files
+  (`components/GFM_*.json`, `sim/{vsm,droop,voc}/*`); the only changed files are the three
+  `sim/base/*.json`, by PHPS's wall time. The component seeds are now stable per type
+  (`SEED_ORDER` in `generate/components.py`): a first build used the sorted-list index and
+  shifted the seeds of the IEEE types, so it was discarded and the pack regenerated.
+  `parity/README.md` has its v6 row, marked not uploaded; update it after publishing.
+- **Converter initialisation follows PHPS's invariant** (the Norton source stays at its first
+  pass, set-points are recaptured; checked on the pack), and lag states are settled on their
+  own equations after the Newton solve (general mechanism: `lag_states` per model).
+- **Route B uses the trace-normalised decay margin**, not "Q >= I, rate <= -eps I", and
+  patterns are mapped from the physical coordinates (the reference-angle fix).
+- **P0**: the tamper test writes fresh copies instead of `chmod` (the `EINVAL`).
 
 ## Decided (2026-09-29)
 
@@ -199,11 +261,14 @@ src/components/machines/  genrou.jl, gensal.jl
 src/components/exciters/  ieeet1.jl
 src/components/governors/ ieeeg1.jl, ieeeg3.jl
 src/components/loads/     complexload.jl
+src/components/converters/ common.jl (vi_bisection, the virtual-impedance divider), gfm_vsm.jl,
+                          gfm_droop.jl, gfm_voc.jl
 src/assembly/wiring.jl    InputSource, resolve_wiring (PHPS wire semantics + post-init refresh)
 src/assembly/dae.jl       DAESystem, assemble (Y-bus at the power-flow voltages, PHPS's C++
                           constant rounding), dae_residual! (port of the C++ dae_residual)
 src/assembly/sparsity.jl  jacobian_pattern (structural, valid in every limiter mode)
 src/init/components.jl    init_from_phasor (machines), init_from_targets (exciter, governors),
+                          converter_init / converter_current (converters),
                           first_pass (PHPS Initializer.run: power split, machine links)
 src/init/equilibrium.jl   solve_equilibrium: first pass -> Gauss-Newton on the full DAE,
                           slack set-point closing the power balance, Vini fixed point,
@@ -240,8 +305,16 @@ scripts/joint_governor_storage.jl  joint storage at the governor ports (negative
 src/ph/terminal.jl        route A: sync_jacobian, TerminalModel / NetworkModel,
                           terminal_models (the cut at the machine terminals), terminal_margins
 scripts/terminal_passivity.jl  route A test, per unit and per layer (negative result)
+src/ph/structure.jl       route B: state_groups, storage_pattern, section_pattern,
+                          reference_section, pow2_scaling, lyapunov_check, margin_residuals,
+                          verified_min_eig (interval), pattern_certificate, verified_lyapunov,
+                          rank_couplings, add_coupling!, couple_states!; decay_margin and
+                          structured_lyapunov in ext/PorthosJuMPExt
+scripts/storage_search.jl route B search (margins, hypotheses, dual-guided greedy, L1;
+                          Hypatia, capped at 300 s per solve)
 parity/generate/sim.py    sim section: PHPS's compiled BDF1 / IDA runs (5 ms grid, binary)
-ext/                      PorthosMakieExt (CairoMakie), PorthosJuMPExt (JuMP): empty stubs
+ext/                      PorthosMakieExt (CairoMakie); PorthosJuMPExt (JuMP), with the
+                          structure-search SDP currently in progress
 parity/generate/generate_pack.py   pack generator (network, powerflow, records, components)
 parity/generate/components.py      components section: PHPS init, instrumented kernels, sampling
 parity/generate/dae.py             dae section: PHPS's C++ kernel compiled with a residual harness
@@ -351,6 +424,12 @@ test/unit/, test/parity/p0..p7, p10   unit tests and the P0 to P7 and P10 gates 
   case that does.
 
 ## Next steps
+
+**Start here next conversation (2026-10-01):** go through "Needs the user" A to F with the
+user (P6 droop residual, publish pack v6, P4 reading for the converters, Route B method,
+commit, P7 IDA gate on the converter cases). Then, software tools: P8 reports (item 2
+below), or event detection on the switching surfaces (roadmap 2.3), which would also answer
+F. Route B: the L1 stage did not converge in its cap (see "Route B results", step 6).
 
 The user's direction (2026-09-29): the models must be properly defined before the
 stability tooling. The governor, exciter and GFL reservoir models are not passive and need
@@ -497,9 +576,120 @@ plus the common rotation (0). But:
   plus U_net). Feasible: A works, and B gives the blocks to build. Infeasible: B shows which
   extra coupling is missing.
 
+**Route B results so far (2026-09-30), `scripts/storage_search.jl`, `src/ph/structure.jl`,
+`ext/PorthosJuMPExt` (`structured_lyapunov`).**
+- Set-up: V = z'Qz on the common-angle section in reference-angle coordinates (plain
+  physical states; the reference is GENROU_1.delta, the largest COI weight; the other
+  coordinate is recovered from l'x = 0), with Q >= I and As'Q + QAs <= -eps I (eps = 1e-3).
+  Patterns (`storage_pattern`): `:unit` (each machine with its governor and exciter as one
+  dense block, each load its own block, all rotor angles coupled; 1236 free entries),
+  `:component` (each component alone, angles coupled; 541 entries), `:full`.
+- **Numerics, learned the hard way:** the unscaled problem is badly conditioned (the dense
+  Lyapunov solution has condition 1.36e8; its diagonal runs from 0.01 on the exciter states
+  to 4.4e5 on GENROU_1.omega; max |As| = 4250 from fast exciter and damper time constants
+  against the slowest mode at -0.027). SCS (first order) with tight tolerances did not
+  finish in about 30 minutes (and printed nothing: output to a file needs `flush`); this
+  is probably also why PHPS's SCS run never finished. Fix: a diagonal rescaling from the
+  dense solution (condition 3.7e3, max |As| 86; it keeps every pattern) and the
+  interior-point solver Hypatia (pure Julia, installed into the default environment; no
+  conflict like Clarabel's), each stage capped at 300 s. Whole run: about 7 minutes.
+- Results:
+  - 0. dense (Lyapunov equation): Lyapunov, as expected (PHPS's V_P).
+  - 1. `:unit` pattern: solver ALMOST_INFEASIBLE (88 s); the returned Q is about 0,
+    so not Lyapunov.
+  - 2. `:component` pattern: INFEASIBLE (21 s).
+  - 3. `:unit` pattern with L1 on the cross-component entries: ALMOST_INFEASIBLE (304 s,
+    the time cap).
+- Reading (softened after review, 2026-09-30): **no block-local quadratic storage was
+  found.** Hypatia reported the `:component` pattern infeasible (a solver certificate, not
+  yet validated independently) and the larger `:unit` pattern ALMOST_INFEASIBLE, which is an
+  unconfirmed numerical result, not infeasibility. Even a certified infeasibility of the unit
+  pattern would prove only that *some* off-pattern entry is needed in a strictly decaying
+  quadratic storage; it would not identify which. Couplings between units (machine speeds,
+  fluxes of electrically neighbouring machines) are **hypotheses to test**, not findings.
+  Route A is consistent with this, but the two failures are not logically equivalent (A: a
+  passivity split with the V*I supply; B: a pattern-restricted quadratic Lyapunov function).
+  Part of "almost infeasible" may be the normalisation: Q >= I with a fixed eps is
+  homogeneous, and solvers struggle near the boundary.
+
+**Route B plan (agreed 2026-09-30, after review; start the next conversation here).**
+1. **Soften and document** (done in this file): the wording above; the steps below.
+2. **Solver records and output:**
+   - `structured_lyapunov` (ext/PorthosJuMPExt) returns and every report stores the JuMP
+     and Hypatia versions (Hypatia 0.11.0 is installed in the default environment, outside
+     the project Manifest, so its version must be recorded), primal and dual status, raw
+     status, iterations, primal and dual residuals, solve time, and the dual certificate
+     (the dual matrices).
+   - `scripts/storage_search.jl`: print and flush each stage label *before* the solve; state
+     in the report that the L1 penalty acts in the scaled coordinates (T = diag(Q0)^(-1/2)),
+     so sparsity rankings depend on that scaling.
+3. **Validate the `:component` infeasibility independently:** check Hypatia's dual
+   certificate in Porthos (the dual matrix positive semidefinite, and the certificate
+   conditions for the pattern), first with Float64 eigenvalues, later with interval
+   arithmetic (the roadmap's certificate discipline).
+4. **Decay-margin SDP instead of binary feasibility:** maximise t subject to
+   I <= Q <= kappa I and As'Q + QAs <= -t I on the pattern (the upper bound keeps it bounded
+   and removes the arbitrary eps). It returns the best margin per pattern (how far a pattern
+   is from working) and its dual.
+5. **Rank the missing inter-unit blocks with the dual:** the dual matrix (or the worst-decay
+   eigenvector) at the forbidden positions says which added couplings would raise the margin
+   most. Add the highest-ranked blocks, and test the hypotheses along the way (machine speeds
+   coupled across units; flux states of electrical neighbours).
+6. **Only then the L1 search** (fewest cross-terms), on the first larger pattern that is
+   feasible.
+Keep every stage bounded (time limit, progress printed and flushed), and say how long it
+should take before starting it.
+
+**Route B results (2026-10-01, plan steps 2 to 5 done; step 6 pending).** `julia --project=.
+scripts/storage_search.jl` (about 30 min; report `outputs/ph_audit/system_phtrue/storage_search.json`
+with the JuMP 1.31.2 / Hypatia 0.11.0 versions, statuses, iterations, times and residuals).
+- **Method** (`src/ph/structure.jl`): instead of "Q >= I, rate <= -eps I" (homogeneous, which
+  made the solver report ALMOST_INFEASIBLE), the decay margin
+  gamma(S) = min lambda_max(As'P + PAs) over P on the pattern S, P >= 0, tr P = 1 (compact;
+  S carries a strict quadratic Lyapunov function iff gamma(S) < 0). Its dual is the
+  certificate: for any Z = LL' and Y equal to As Z + Z As' on S, gamma(S) >= lambda_min(Y)/tr Z;
+  `pattern_certificate` checks it in interval arithmetic (`verified_min_eig`: congruence by
+  approximate eigenvectors, then Gershgorin); `verified_lyapunov` checks a primal P the same
+  way. Rigorous for the Float64 Jacobian; the scaling is by powers of two (`pow2_scaling`),
+  so the scaled matrix is exact. Tested on an analytic 2x2 case (a hand-made certificate).
+- **Pattern fix:** the reference angle is -l'z/l_ref, so terms with it become couplings with
+  every rotor angle; the earlier patterns, written on the section coordinates, missed these
+  for GENROU_1's own states. Patterns are now written on the physical coordinates and mapped
+  (`section_pattern`).
+- **Numbers** (scaled coordinates; the dense Lyapunov solution gives -4.07e-3, and
+  gamma(full) >= 2 max Re eig = -5.4e-2):
+  - `:component` and `:unit`: gamma = 0 to solver precision (in [-2e-10, 6.7e-9] and
+    [-6.9e-11, 2.4e-9], rigorous lower bounds). No certified infeasibility (that needs an
+    exact Z with P_S(As Z + Z As') = 0), but the best block-local margin is at most 2.4e-9.
+    So a block-local quadratic storage cannot decay strictly by any useful margin.
+  - unit + speed-speed, + speed-angle, + machine-angle across units: still 0.
+  - **unit + all machine states coupled across machines (3053 entries): -2.03e-6, verified
+    Lyapunov** (rigorous).
+  - greedy from `:unit`, adding the 4 inter-component blocks the dual ranks highest per
+    step: 0 for 6 steps, then verified Lyapunov from step 7 (2233 entries, -8.4e-7) to step
+    10 (2686, -1.8e-5). The blocks it picks: machine-machine pairs (GENROU_7-GENROU_8,
+    GENROU_4-GENROU_7, GENROU_8-GENROU_10, GENROU_9-GENROU_11; whether these are electrical
+    neighbours is not checked), the reference machine GENROU_1 (bus 39, no
+    controllers, D = 0, the largest inertia) with most machines, exciter-machine across
+    units, and last the hydro governor IEEEG3_11 with machines.
+  - reading: strict decay needs cross-unit coupling of machine states, above all of
+    GENROU_1; the margins are 2 to 3 orders below the dense storage's. Hypotheses to take
+    to the method discussion, not findings about physics yet.
+- **Step 6 (L1): no result yet.** The rerun (2026-10-01, same numbers as above, deterministic)
+  ran L1 on the first verified pattern, unit + machine-machine (3053 entries), keeping half its
+  margin (rate 1.0e-6): Hypatia stopped at the 300 s cap (TIME_LIMIT) and the iterate is not a
+  verified Lyapunov function, so the block list it printed (40 of 55 inter-unit machine blocks,
+  led by GENROU_7-GENROU_8, GENROU_9-GENROU_11, GENROU_1 with most machines) is not a finding.
+  Next: run L1 on the smaller greedy-7 pattern (2233 entries), or restrict the L1 weights to
+  the machine-machine blocks, with a longer cap agreed with the user (per the bounded-run
+  rule: probe first, say how long).
+
 Software tools, as before:
 
-1. **Grid-forming converters** (P4 item 5): `GFM_VSM_PHTRUE`, `GFM_DROOP_PHTRUE`,
+1. **Grid-forming converters** (P4 item 5): **ported (2026-10-01)**; P7 on their cases
+   with pack v6 (see the P7 row). The stale-output order is not an issue for them (their
+   output kernels read only their own states). Still open: switch `ybus_dae` to the
+   components' `norton_admittance` (it uses the case parameters, which agree). Earlier text: `GFM_VSM_PHTRUE`, `GFM_DROOP_PHTRUE`,
    `GFM_VOC_PHTRUE`, ported as PHPS has them at `ba11ea1`. Then P5 to P7 on the vsm, droop
    and voc cases: pack v5 with their `components` samples and `sim` runs. **GFL waits**
    (user, 2026-09-29): the GFL converter needs its own energy-reservoir model, like the
@@ -530,7 +720,8 @@ Control-related, waiting for the method discussion (do not start alone):
 - the energy-reservoir models: a GFL reservoir built like the governors' and exciters'
   (then GFL_PHTRUE and GFL_ZIF_PHTRUE are ported), and fixes to the governor and exciter
   reservoirs' problems;
-- P10 PH audits (shifted storage, KYP / passivity with JuMP; Clarabel, "Needs the user" 1);
+- the remaining P10 port-residual audit and validation of the structure-search SDP
+  (Clarabel remains an open solver choice; see "Needs the user" 1);
 - P11 ROA certificates (interval primitives for the limiters come with it);
 - the P9 reservoir, design, OPF and control-mode studies, and the energy-margin /
   reservoir-work study;

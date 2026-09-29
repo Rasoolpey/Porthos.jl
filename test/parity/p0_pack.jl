@@ -12,19 +12,24 @@
     @test [c.name for c in Porthos.pack_cases(PACK)] ==
           ["base", "gfl", "gfl_zif", "vsm", "droop", "voc"]
 
-    # tampering is detected
-    mktempdir() do d
-        cp(PACK.dir, joinpath(d, "pack"))
-        dir = joinpath(d, "pack")
-        for (root, _, files) in walkdir(dir), f in files
-            chmod(joinpath(root, f), 0o644)
+    # tampering is detected. The copies are written as new files rather than `cp`'d: `cp`
+    # keeps the artifact's read-only permissions, and `chmod` on them failed on Windows
+    # (EINVAL, Julia 1.12.7) depending on how the artifact had been extracted.
+    function writable_copy(dst)
+        for (root, _, files) in walkdir(PACK.dir), f in files
+            target = joinpath(dst, relpath(joinpath(root, f), PACK.dir))
+            mkpath(dirname(target))
+            write(target, read(joinpath(root, f)))
         end
+        return dst
+    end
+    mktempdir() do d
+        dir = writable_copy(joinpath(d, "pack"))
+        @test verify_parity_pack(dir) !== nothing
         f = joinpath(dir, "cases.json")
         write(f, read(f, String) * " ")
         @test_throws Porthos.ParityPackError verify_parity_pack(dir)
-        cp(PACK.dir, joinpath(d, "pack2"))
-        dir2 = joinpath(d, "pack2")
-        chmod(dir2, 0o755)
+        dir2 = writable_copy(joinpath(d, "pack2"))
         write(joinpath(dir2, "extra.json"), "{}")
         @test_throws Porthos.ParityPackError verify_parity_pack(dir2)
     end
