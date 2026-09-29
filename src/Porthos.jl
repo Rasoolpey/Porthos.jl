@@ -77,6 +77,16 @@ include("ph/dissipativity.jl")
 include("ph/terminal.jl")
 include("ph/structure.jl")
 
+# ROA certificates
+include("roa/interval.jl")
+include("roa/section.jl")
+include("roa/candidate.jl")
+include("roa/enclosure.jl")
+include("roa/containment.jl")
+include("roa/certificate.jl")
+include("roa/analytic.jl")
+include("roa/check.jl")
+
 # PowerFactory interface (runs pf/, reads its results)
 include("io/powerfactory.jl")
 
@@ -126,6 +136,19 @@ export storage_components, total_hamiltonian, grad_total_hamiltonian, hessian_to
        reference_section, lyapunov_check, structured_lyapunov, pow2_scaling, decay_margin,
        margin_residuals, verified_min_eig, pattern_certificate, verified_lyapunov,
        rank_couplings, add_coupling!, couple_states!, section_pattern
+# ROA certificates
+export ProofFailure, is_interval_type, interval_solve, verified_max_eig, weyl_max_eig, verified_inverse_diagonal,
+       ellipsoid_half_widths, SectionModel, section_model, lift, section_coordinates,
+       section_field, state_field, project_field, section_residual, section_jacobian,
+       LyapunovCandidate, QuadraticCandidate, quadratic_candidate, candidate_model,
+       candidate_value, candidate_gradient, positivity_proof, sublevel_half_widths,
+       gradient_matrix_hull, candidate_fingerprint, candidate_record, model_fingerprint,
+       EquilibriumEnclosure, enclose_equilibrium, KCLBranch, enclose_kcl_branch, krawczyk,
+       jacobian_hull, centered_hull, ContainmentAudit, containment_audit, box_digest, certify_level,
+       certify_roa, section_record, software_record, write_certificate, eval_param_expr,
+       system_digest, interval_cholesky, cholesky_positive_definite, roa_check,
+       AbstractSectionModel, AnalyticModel, rotation_action, check_rotation_symmetry,
+       certificate_claim, model_assumptions
 # PowerFactory
 export PFResults, read_pf_results, pf_signal, pf_command, pf_simulate, pf_inspect,
        pf_machine_map, pf_compare

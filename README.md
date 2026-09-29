@@ -3,14 +3,16 @@
 **Port-Hamiltonian Operation and Stability.** A power system simulator and stability toolbox,
 written entirely in Julia, where the same model code runs both the simulation and the proofs.
 
-> **Status: pre-alpha (2026-09-29).** Phases P0 to P3, the synchronous-machine part of P4,
-> and P5 and P6 on the IEEE-39 base case are implemented: loaders, parity pack, Y-bus, power
-> flow, the GENROU, GENSAL, IEEET1, IEEEG1, IEEEG3 and COMPLEXLOAD models, the assembled DAE
-> residual and the equilibrium, all matching PHPS (the residual against PHPS's compiled C++).
-> Simulation (P7) works on the base case: fixed-step BDF1 (matching PHPS's compiled BDF1 to
-> `2e-11`) and SUNDIALS IDA, with PHPS-compatible `simulation_results.csv` and `run.json`;
-> its gate tests are next. The plan is in
-> [docs/ROADMAP.md](docs/ROADMAP.md) and the current state in [TODO.md](TODO.md).
+> **Status: pre-alpha (2026-09-30).** The port of PHPS is done for everything the stability
+> work needs and its parity is frozen as a regression guardrail: loaders, parity pack, Y-bus,
+> power flow, the synchronous-machine set (GENROU, GENSAL, IEEET1, IEEEG1, IEEEG3,
+> COMPLEXLOAD) and the grid-forming converters (GFM_VSM, GFM_DROOP, GFM_VOC), assembly,
+> initialisation, BDF1 and IDA simulation, the PowerFactory driver, and the port-Hamiltonian
+> audits (P0 to P7, P10). The ROA certificate pipeline (P11) is in place for the quadratic
+> candidate `V_P`: a rigorous local certificate for the retained 171-dimensional physical
+> quotient of the synchronous IEEE-39 model. The active work is Target B (a physical storage
+> `H_ext` as the Lyapunov function). The plan is in [docs/ROADMAP.md](docs/ROADMAP.md) and
+> the current state in [TODO.md](TODO.md).
 
 ---
 
@@ -319,7 +321,7 @@ environment (pinned in [parity/generate/requirements.txt](parity/generate/requir
 On other systems: install Julia 1.12 (juliaup), then
 `julia --project -e "using Pkg; Pkg.instantiate()"`.
 
-## What works now (P0 to P7 and P10, synchronous-machine set)
+## What works now (P0 to P7, P10 and P11)
 
 Simulate a fault and plot it, in one command from the repository folder:
 
@@ -384,6 +386,20 @@ m = port_model(gov, xg, ug; input = "omega", output = "Tm")   # any component, a
 passivity_certificate(m), real_part_crossings(m), port_zeros(m)
 ```
 
+Certify a local region of attraction with the quadratic candidate `V_P` (P11; about 7
+minutes), then recheck the written record independently:
+
+```
+julia --project=. scripts/certify_roa.jl [scenario.json]
+```
+
+```julia
+m = section_model(eq)                 # retained physical quotient, voltages explicit
+c = quadratic_candidate(m)            # V_P, A'P + PA = -I at the equilibrium
+rec = certify_roa(c)                  # every gate on the same boxes; rec["claim"] states the theorem
+roa_check(write_certificate("cert.json", rec))   # digests + interval Cholesky
+```
+
 Tests: `julia --project test/runtests.jl`, or `scripts\setup.ps1 -RunTests`. The Y-bus
 matches PHPS bit for bit and the power flow to about `4e-15` on all six parity cases; the six
 component models agree with PHPS's kernels at 1200 random states, branch decisions first.
@@ -436,18 +452,18 @@ The full plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 | Phase | What is built | Gate | Status |
 |---|---|---|---|
-| P0 | environment, pinned dependencies, parity pack import | CI runs; every parity file loads | done locally; CI waits for the pack release upload |
+| P0 | environment, pinned dependencies, parity pack import | CI runs; every parity file loads | done locally; CI waits for the pack v6 release upload |
 | P1 | loaders, schemas, contract loader, expression reader | every JSON under `cases/` loads and round-trips | done |
 | P2 | Y-bus, bus map, fault admittances | Y-bus equal to PHPS within `1e-12` | done (bit-identical) |
 | P3 | Newton-Raphson power flow | voltages match PHPS within `1e-8`, the case `v0` within `1e-6` and `a0` within `2e-6` (relative to the slack) | done (`4e-15` from PHPS) |
-| P4 | components, active set first | `rhs`, outputs, injection, `H` and `∇H` match at 200 random states with both limiter branches exercised; contract identical | synchronous-machine set done; converters after P7 |
-| P5 | assembly, DAE residual, sparsity | `f` and `g` match at 50 random states per case | base case done; converter cases after their models |
-| P6 | initialisation | `x*` and `V*` match PHPS; DAE residual at most `1e-12` | base case done |
-| P7 | simulation, events, results writer | bus-16 fault: BDF1 against BDF1, IDA against IDA (until a limiter slides), and the PowerFactory metrics | in progress: BDF1 `1.7e-11`, IDA `1.2e-7` before the limiter window; tests and PowerFactory next |
+| P4 | components, active set first | `rhs`, outputs, injection, `H` and `∇H` match at 200 random states with both limiter branches exercised; contract identical | done for the synchronous set and GFM_VSM, GFM_DROOP, GFM_VOC; GFL waits for its reservoir model |
+| P5 | assembly, DAE residual, sparsity | `f` and `g` match at 50 random states per case | done (base and the three GFM cases) |
+| P6 | initialisation | `x*` and `V*` match PHPS; DAE residual at most `1e-12` | done (base and the three GFM cases) |
+| P7 | simulation, events, results writer | bus-16 fault: BDF1 against BDF1, IDA against IDA (until a limiter slides), and the PowerFactory metrics | done and frozen: BDF1 `1.7e-11`; IDA `1.2e-7` before the first sliding mode (converter IDA report-only) |
 | P8 | reports | figures regenerate from records alone | |
 | P9 | studies | recorded anchors reproduced: CCT, energy walls, frequency indices, Q-V margin `6.055 → 12.383 pu`, `D_r` | |
-| P10 | port-Hamiltonian audits | rank `54/171`, 41 positive eigenvalues, max `+12.882693`; IEEEG1 crossing at `1.934718 rad/s`; KYP infeasible on all nine sets | |
-| P11 | ROA certificate pipeline | `verified_valid_level = 2.69e-12` for both candidate `P`; centered decay at `5.16e-10`; all 83 contract clauses pass | |
+| P10 | port-Hamiltonian audits | rank `54/171`, 41 positive eigenvalues, max `+12.882693`; IEEEG1 crossing at `1.934718 rad/s`; KYP infeasible on all nine sets | done; the nonlinear port-power residual audit is open (next step) |
+| P11 | ROA certificate pipeline | `verified_valid_level = 2.69e-12` for both candidate `P`; centered decay at `5.16e-10`; all 83 contract clauses pass | done for `V_P` in Porthos's own scaling (the PHPS numbers are sanity references): `1.71e-10` (centered), `1.88e-12` (first order); 83 clauses; `ROACheck` passes; analytic 1-D and 2-D cases in the tests |
 | P12 | Python wrappers; old pipeline retired | a fresh clone reproduces the parity suite with one command | |
 
 ### Part II: the modelling and stability programme (after parity)

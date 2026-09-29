@@ -218,7 +218,7 @@ function verified_min_eig(Y::AbstractMatrix{<:IntervalArithmetic.Interval})
         end
         B = Xt * Yc * X
         ok = all(axes(B, 1)) do i
-            I_.inf(B[i, i]) > sum(I_.mag(B[i, j]) for j in axes(B, 2) if j != i)
+            I_.inf(B[i, i]) > sum((I_.mag(B[i, j]) for j in axes(B, 2) if j != i); init = 0.0)
         end
         ok && return c
     end

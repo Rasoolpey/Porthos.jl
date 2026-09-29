@@ -33,10 +33,10 @@ const EXPR_FUNCTIONS = Dict{String,Function}(
     "sqrt" => sqrt,
 )
 
-mutable struct _ExprLexer
+mutable struct _ExprLexer{T}
     s::String
     pos::Int                           # byte index of the next unread character
-    env::Dict{String,Float64}          # named values (parameters), checked before constants
+    env::Dict{String,T}                # named values (parameters), checked before constants
 end
 
 function _skipspace!(lx::_ExprLexer)
@@ -101,7 +101,7 @@ function _atom(lx::_ExprLexer)
     m = match(_NUMBER_RE, lx.s, lx.pos)
     if m !== nothing
         lx.pos += ncodeunits(m.match)
-        return parse(Float64, m.match)
+        return _expr_number(lx, parse(Float64, m.match))
     end
     m = match(_IDENT_RE, lx.s, lx.pos)
     if m !== nothing
@@ -110,12 +110,12 @@ function _atom(lx::_ExprLexer)
         if haskey(lx.env, name)
             return lx.env[name]
         elseif haskey(EXPR_CONSTANTS, name)
-            return EXPR_CONSTANTS[name]
+            return _expr_number(lx, EXPR_CONSTANTS[name])
         elseif haskey(EXPR_FUNCTIONS, name)
             _take!(lx, '(')
             v = _expr(lx)
             _take!(lx, ')')
-            return Float64(EXPR_FUNCTIONS[name](v))
+            return _expr_call(lx, EXPR_FUNCTIONS[name], v)
         end
         throw(ParamExprError(lx.s, "unknown name '$name'"))
     end
@@ -134,13 +134,29 @@ julia> Porthos.parse_param_expr("2.0 * M_PI * 60.0") == 2.0 * π * 60.0
 true
 ```
 """
-function parse_param_expr(s::AbstractString, env::AbstractDict = Dict{String,Float64}())
-    lx = _ExprLexer(String(s), 1, Dict{String,Float64}(string(k) => Float64(v) for (k, v) in env))
+parse_param_expr(s::AbstractString, env::AbstractDict = Dict{String,Float64}()) =
+    eval_param_expr(Float64, s, env)
+
+"""
+    eval_param_expr(T, s, env) -> T
+
+`parse_param_expr` in the number type `T`: every literal, constant and `env` value is
+converted to `T` (a literal is first read as the nearest Float64, as the model reads its
+parameters), and the arithmetic is `T`'s. With an interval type this gives an
+outward-rounded enclosure of the Float64 expression's exact value (the ROA containment
+audit).
+"""
+function eval_param_expr(::Type{T}, s::AbstractString, env::AbstractDict) where {T}
+    lx = _ExprLexer{T}(String(s), 1, Dict{String,T}(string(k) => T(v) for (k, v) in env))
     _peek(lx) == '\0' && throw(ParamExprError(lx.s, "empty expression"))
     v = _expr(lx)
     _peek(lx) == '\0' || throw(ParamExprError(lx.s, "trailing input at position $(lx.pos)"))
     return v
 end
+
+_expr_number(::_ExprLexer{T}, v::Float64) where {T} = T(v)
+_expr_call(::_ExprLexer{Float64}, f, v) = Float64(f(v))
+_expr_call(::_ExprLexer, f, v) = f(v)
 
 """
     param_value(x) -> Float64

@@ -420,6 +420,30 @@ Components:
 - the centered hull reproduces decay at `5.16e-10`;
 - the same 83 clauses pass.
 
+**Status (2026-09-30): the pipeline is done for the quadratic candidate** (`src/roa/`,
+`scripts/certify_roa.jl`, `test/unit/roa.jl`). Per the Part I banner, the PHPS numbers are
+sanity references; Porthos's `P` is its own (the Lyapunov equation in power-of-two scaled
+reference-angle coordinates, not PHPS's balanced orthonormal ones), so the levels are not
+directly comparable. On IEEE-39 at Porthos's equilibrium:
+
+- `verified_valid_level = 1.71e-10` with the centered hull bounded coordinate by coordinate
+  (`1.29e-11` with a single interval direction, `1.88e-12` with the first-order hull); every
+  gate on the same boxes; the same 83 contract domain clauses pass, plus the evaluation,
+  single-mode (242 branch sites decided), held-state and nonbinding-reservoir categories;
+- `ROACheck` (`roa_check`) passes from the written record: case, contract, system, model and
+  candidate digests recomputed; `P > 0` and the decay re-proved by interval Cholesky;
+- differences from PHPS: model code evaluated directly on intervals and nested duals (no
+  generated jets); the field projected along the common rotation, because the rounded COI
+  weights do not sum to the rounded total and the unprojected section drifts; definiteness by
+  a Weyl bound with a Collatz-Wielandt radius; a candidate-independent interface
+  (`LyapunovCandidate`) for `H_ext` later;
+- the theorem is stated for the retained physical quotient: attraction to the enclosed
+  equilibrium while the excluded one-way reservoirs (and the delta_COI monitor) stay in the
+  recorded ranges over which they are proved not to feed back; the reservoirs are not
+  claimed to converge. The rotation symmetry is declared per model type
+  (`rotation_action`) and checked on the wiring; converter types are not declared yet;
+- analytic 1-D and 2-D certificates (`AnalyticModel`) test the gates against known answers.
+
 ### P12. Python wrappers and retirement of the old pipeline
 - `python/porthos/` exposes the Julia entry points, and the lint rule of 2.5 applies.
 - All studies are run from Julia. The old PHPS remains only as the source of the parity pack.

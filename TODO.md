@@ -3,7 +3,7 @@
 Read this first in a new session, then `AGENTS.md` and `docs/ROADMAP.md` (its Part I banner:
 parity is frozen). Updated at the end of every session.
 
-Last reviewed: 2026-10-01.
+Last reviewed: 2026-09-30 (step 3, the ROA certificate pipeline for `V_P`, done).
 
 ## Goal
 
@@ -48,20 +48,45 @@ discussed with the user before they are implemented.
 ## Next steps, in order
 
 1. ~~Record the certificate decision~~ and ~~add the roadmap override~~ (done 2026-10-01).
-2. **Publish pack v6** (the one loose end, below), with the user's go-ahead, and verify the
-   download; this restores CI. Then no more parity-pack work.
-3. **Generic Lyapunov-candidate interface with the quadratic `V_P`** (the first code task; a
-   new `src/roa/`). The candidate API as decided above; `QuadraticCandidate(P)` with `P`
-   from the Lyapunov equation on the section (`physical_projection`, `reference_section` and
-   the dense `lyap` solution in `scripts/storage_search.jl` show how), shifted to the
-   equilibrium from `solve_equilibrium`; interval evaluation of `V` and of `grad V' f`
-   through the generic component code (the models are generic in the number type; interval
-   methods for the branch primitives, returning the decided branch or throwing
-   `UndecidedBranch`, belong here); the KCL branch and the voltage elimination by the
-   interval implicit-function argument; the single-mode containment audit with the contract
-   `domain_clauses`. Roadmap P11 lists the pieces (equilibrium Krawczyk, first-order and
-   centered hulls, definiteness test, mean-value gate, records, `ROACheck`). Probe small and
-   bound every long computation (memory: bounded long runs).
+2. ~~**Publish pack v6**~~ (done 2026-09-30: release `parity-pack-v6`, the downloaded file's
+   sha256 and `Tar.tree_hash` match `Artifacts.toml`). No more parity-pack work.
+3. ~~**Generic Lyapunov-candidate interface with the quadratic `V_P`**~~ (done 2026-09-30;
+   see "ROA certificate pipeline" below). `V_P` certified at `1.71e-10` on IEEE-39 with every
+   gate; `ROACheck` passes. Open inside this step, none blocking step 4:
+   - speed: the coordinate-by-coordinate centered hull takes about 25 s per level (171
+     nested-dual Jacobians over the whole model); structure-aware sparse second-order jets
+     would cut it, and larger inner chunks compile far too slowly (tried: chunk 16 did not
+     finish in 9 minutes);
+   - the certified set is tiny in physical terms (box half-widths up to about 2e-4 in scaled
+     coordinates); growing it is Target A (roadmap II.1: conditioning or hull-aware `P`,
+     then fault reach), not part of the Target B track;
+   - the `H_ext` candidate needs its own `sublevel_half_widths` (a quadratic lower bound),
+     `gradient_matrix_hull` (an interval Hessian of `H_ext`) and `positivity_proof`; the
+     gates themselves are shared.
+   Review closures before the record is final (review of 2026-09-30):
+   - ~~claim~~ (done): the record now states attraction of the retained physical quotient,
+     conditional on the excluded states (reservoirs, delta_COI) staying in the ranges over
+     which they are proved not to feed back (widest `x0 * [2^-k, 2^k]`, k in 60/40/20/10;
+     the reservoirs get `2^10`, the next span straddles their own `guard_min`), with a bound
+     on each one's drift rate over the certified box; convergence of the reservoirs and a
+     full-state ROA are explicitly not claimed. Global nonfeedback (for every reservoir
+     value) is not proved;
+   - ~~rotation guard~~ (done): `rotation_action` per model type (machines: `delta` and the
+     network-frame V / I pairs; ComplexLoad: its V / I pair; exciters and governors:
+     invariant) and `check_rotation_symmetry` on the wiring, injections and fixed-voltage
+     buses; model types without a declaration (the GFM converters, VOC's Cartesian states
+     in particular) are rejected;
+   - ~~analytic tests~~ (done): `AnalyticModel`; 1-D `x' = -x + x^3` (all three hulls
+     certify exactly `c < 1/6`: pass 0.16, fail 0.17 and at the true boundary 0.5), 2-D
+     radial `x' = -x (1 - |x|^2)` (pass 0.05, fail 0.5), a clamp (certified inside one mode,
+     `UndecidedBranch` across it), an unstable case rejected. They exposed and fixed two
+     bugs: the centre of the centered hull now needs the equilibrium voltages inside the
+     branch's uniqueness box `X` and is evaluated on `eq.V cap V`, and `verified_min_eig`
+     failed on 1 x 1 matrices;
+   - ~~README status~~ (done); full suite with the final default: see the loose ends;
+   - after committing: regenerate `outputs/roa/IEEE39Bus_PF/certificate_quadratic.json` and
+     `roa_check.json` from the clean commit (`scripts/certify_roa.jl`), so the record names its
+     exact source (`porthos_src_modified = false`).
 4. **Nonlinear port-power residual audit** (the missing P10 audit): for each component,
    reconstruct independently its supply (port power), internal storage derivative,
    dissipation and the network cancellation, and check `grad H' f = supply - dissipation`
@@ -78,14 +103,57 @@ discussed with the user before they are implemented.
    right-half-plane zero) need a joint machine-governor storage or another port.
 7. **Certify `V_P` and `V_ext`** through the same single-mode pipeline and compare the sets.
 
-## Loose ends (no thinking needed; step 2)
+## ROA certificate pipeline (`src/roa/`, 2026-09-30)
 
-- **Parity pack v6 is not published**, but `master` (pushed, `78ae66f`) binds it, so CI fails
-  until the release `parity-pack-v6` exists. Tarball `parity/dist/parity_pack-v6.tar.gz`,
-  sha256 `400974ee39cb16ac45c9628916facbf21583fa225bad0af4d863d7219b050136`, tree hash
-  `c99fe023705c11cc10260a9dcbc608421daa3cb8`. Publishing is outward-facing: ask the user,
-  then upload as for v3 to v5 (GitHub REST API with the stored git credential; there is no
-  `gh` on this machine) and verify both hashes on the downloaded file.
+Run: `julia --project=. scripts/certify_roa.jl [scenario.json]` (about 8 minutes). Records:
+`outputs/roa/<case>/certificate_quadratic.json` (with `P`, the coordinates and every tried
+level) and `roa_check.json`.
+
+- **Theorem** (`certificate_claim`): attraction of the retained physical quotient (171
+  coordinates on IEEE-39, modulo the common rotation) to the enclosed equilibrium, while the
+  excluded reservoirs and the monitor stay in their recorded feedback-free ranges; see
+  `excluded_ranges` in the record (with drift-rate bounds, about 2e-3 per second at most).
+- **Coordinates** (`SectionModel`, `section_model(eq)`): the physical coordinates of
+  `physical_projection` on the common-angle section, all but one reference rotor angle
+  (`GENROU_1.delta`), scaled by powers of two (171 on IEEE-39); the bus voltages stay
+  explicit unknowns. The field is projected along the common rotation of every rotor angle:
+  PHPS's rounded COI weights do not sum exactly to the rounded total, so the unprojected
+  section drifts (the equilibrium is a relative equilibrium). The rotation symmetry is
+  declared per model type (`rotation_action`) and checked on the wiring
+  (`check_rotation_symmetry`); undeclared types are rejected.
+- **Models** (`AbstractSectionModel`): `SectionModel` and `AnalyticModel` (closed-form test
+  systems through the same gates).
+- **Candidate interface** (`LyapunovCandidate`): `candidate_value`, `candidate_gradient`,
+  `positivity_proof`, `sublevel_half_widths`, `gradient_matrix_hull`, `candidate_fingerprint`,
+  `candidate_record`; the decay gate is `xi' sym(N'M) xi < 0` with `grad V = N xi` and
+  `h = M xi`, so the same gate serves `V_P` (`N = 2P`) and a later `H_ext`.
+  `QuadraticCandidate` / `quadratic_candidate(m)`: `A'P + PA = -I` at the equilibrium.
+- **Proof steps**: interval methods for the branch primitives (decided or `UndecidedBranch`;
+  duals compare by value); `ProofFailure` for "not proved"; equilibrium by Krawczyk on
+  `[h; g]`; KCL branch over the box by the parametric Krawczyk test; first-order hull
+  `h_eta + h_V Dv` with `Dv` by a verified interval solve; centered hull
+  `J(eta*) + [-R, R]` with `R` from nested duals (coordinate by coordinate by default, or one
+  interval direction); definiteness by Weyl + Collatz-Wielandt (and the eigenvector
+  Gershgorin test, whichever is lower); containment audit on the same boxes (evaluation
+  decorations, every branch decided, held states exactly constant, reservoirs and the
+  monitor proved not to feed back over their recorded ranges, every contract domain clause in
+  interval arithmetic; the expression reader is now generic in the number type).
+- **Results on IEEE-39**: `verified_valid_level` `1.71e-10` (centered, per coordinate),
+  `1.29e-11` (centered, one direction), `1.88e-12` (first order); 83 domain clauses and 242
+  branch sites; above about `1e-6` the ComplexLoad voltage branch (`udmax`) is undecided,
+  which is where single-mode certificates end in any case. `ROACheck` recomputes the case,
+  contract, system, model and candidate digests and re-proves `P > 0` and the decay by
+  interval Cholesky (preconditioned by the inverse Cholesky factor for `P`).
+- The PHPS P11 numbers (`2.69e-12`, `5.16e-10`) are in PHPS's own normalisation of `P`;
+  Porthos's levels are of the same order and are not meant to match.
+
+## Loose ends
+
+- Parity pack v6 is published (release `parity-pack-v6`, 2026-09-30). Verify a pack's tree
+  hash with `Tar.tree_hash` on the decompressed tarball, as `scripts/bind_parity_pack.jl`
+  does; hashing a GNU-tar extraction on Windows gives a different (wrong) hash.
+- The ROA pipeline and the review closures are committed as one commit (2026-09-30) after a
+  green full suite (3043 passes, 2 intentional GFL skips, no failures, 14.5 min).
 - Committed on 2026-10-01 after a green local suite (2926 passes, 2 intentional GFL skips,
   no failures): converter IDA comparison report-only in P7 (BDF1 is the check there); the
   droop P6 residual exception (2e-12 on its two measured-current rows, every other row
@@ -178,7 +246,7 @@ SUNDIALS at `C:\msys64`). Safe to re-run.
   the CSV / JLD2 / run.json writers). Precompiling Porthos takes about 20 s after a source
   change; a fresh process then reaches the simulation in about 2 s (before: about 22 s of
   compilation). A PackageCompiler system image remains possible if the 2 s ever matter.
-- Tests: `julia --project=. test/runtests.jl` (about 12 min, mostly the P7 runs of four
+- Tests: `julia --project=. test/runtests.jl` (about 15 min, mostly the P7 runs of four
   cases). One file alone: `julia --project=. -e 'using Porthos, Test; const ROOT = pwd();
   include("test/parity/common.jl"); include("test/unit/ph.jl")'`.
 
@@ -260,6 +328,18 @@ src/ph/structure.jl       route B: state_groups, storage_pattern, section_patter
                           structured_lyapunov in ext/PorthosJuMPExt
 scripts/storage_search.jl route B search (margins, hypotheses, dual-guided greedy, L1;
                           Hypatia, capped at 300 s per solve)
+src/roa/interval.jl       interval core: branch primitives on intervals, ProofFailure,
+                          interval_solve, verified_max_eig, weyl_max_eig, ellipsoid boxes
+src/roa/section.jl        SectionModel, section_model, lift, section_field (projected),
+                          state_field, section_residual, section_jacobian
+src/roa/candidate.jl      LyapunovCandidate interface, QuadraticCandidate, fingerprints
+                          (system_digest, model_fingerprint)
+src/roa/enclosure.jl      krawczyk, enclose_equilibrium, enclose_kcl_branch, jacobian_hull,
+                          centered_hull (per coordinate or one direction)
+src/roa/containment.jl    containment_audit (categories + contract domain clauses)
+src/roa/certificate.jl    certify_level, certify_roa (candidate or scenario path), records
+src/roa/check.jl          ROACheck: roa_check, interval_cholesky, cholesky_positive_definite
+scripts/certify_roa.jl    V_P certificate + ROACheck on IEEE-39 (one command)
 parity/generate/sim.py    sim section: PHPS's compiled BDF1 / IDA runs (5 ms grid, binary)
 ext/                      PorthosMakieExt (CairoMakie); PorthosJuMPExt (JuMP), with the
                           structure-search SDP currently in progress
@@ -268,7 +348,8 @@ parity/generate/components.py      components section: PHPS init, instrumented k
 parity/generate/dae.py             dae section: PHPS's C++ kernel compiled with a residual harness
 scripts/bind_parity_pack.jl        tarball + Artifacts.toml binding (hash taken from the tarball)
 scripts/setup.ps1                  one-command install
-test/unit/, test/parity/p0..p7, p10   unit tests and the P0 to P7 and P10 gates (common.jl:
-                                   phps_init_params, phps_initial_state)
+test/unit/, test/parity/p0..p7, p10   unit tests (roa.jl: the pipeline, with sampled checks
+                                   of the enclosures) and the P0 to P7 and P10 gates
+                                   (common.jl: phps_init_params, phps_initial_state)
 ```
 

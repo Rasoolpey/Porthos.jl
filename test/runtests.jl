@@ -18,6 +18,7 @@ include("parity/common.jl")
         include("unit/assembly.jl")
         include("unit/powerfactory.jl")
         include("unit/ph.jl")
+        include("unit/roa.jl")
     end
     @testset "parity" begin
         include("parity/p0_pack.jl")

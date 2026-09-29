@@ -198,6 +198,12 @@ function _gather!(u, k::Int, ::Type{T}, Vd, Vq, x, sys::DAESystem, outs) where {
     return u
 end
 
+@inline _log(::Nothing, ::Symbol, ::Int) = NoModes()
+@inline function _log(logs::NamedTuple, kernel::Symbol, k::Int)
+    hasfield(typeof(logs), :current) && (logs.current[] = (kernel, k))   # which kernel runs
+    return getfield(logs, kernel)[k]
+end
+
 """
     DAEWorkspace(sys, T = Float64)
 
@@ -224,12 +230,15 @@ function DAEWorkspace(sys::DAESystem, ::Type{T} = Float64) where {T}
 end
 
 """
-    dae_residual!(f, g, sys, ws::DAEWorkspace, x, V, fault_active) -> (f, g)
+    dae_residual!(f, g, sys, ws::DAEWorkspace, x, V, fault_active[, logs]) -> (f, g)
 
 Allocation-free form: `fault_active[k]` switches the k-th fault shunt of `sys.faults`.
+`logs = (out = Vector{ModeLog}, step = Vector{ModeLog})`, one log per component, records
+the branch decisions of the output and step kernels (the ROA containment audit); the
+default `nothing` records nothing.
 """
 function dae_residual!(f, g, sys::DAESystem, ws::DAEWorkspace{T}, x, V,
-                       fault_active::AbstractVector{Bool}) where {T}
+                       fault_active::AbstractVector{Bool}, logs = nothing) where {T}
     nb = nbus(sys)
     Vd, Vq = ws.Vd, ws.Vq
     for i in 1:nb
@@ -247,7 +256,7 @@ function dae_residual!(f, g, sys::DAESystem, ws::DAEWorkspace{T}, x, V,
         c = comps[k]
         xc = view(x, ws.ranges[k])
         _gather!(ins[k], k, T, Vd, Vq, x, sys, outs)
-        _outputs_any!(outs[k], c, xc, ins[k], NoModes())
+        _outputs_any!(outs[k], c, xc, ins[k], _log(logs, :out, k))
         b, jd, jq = sys.inj[k]
         if b > 0
             Id_inj[b] += outs[k][jd]
@@ -259,7 +268,7 @@ function dae_residual!(f, g, sys::DAESystem, ws::DAEWorkspace{T}, x, V,
         c = comps[k]
         r = ws.ranges[k]
         _gather!(ins[k], k, T, Vd, Vq, x, sys, outs)
-        _step_any!(view(f, r), outs[k], c, view(x, r), ins[k], NoModes())
+        _step_any!(view(f, r), outs[k], c, view(x, r), ins[k], _log(logs, :step, k))
     end
     # 3. centre-of-inertia frame
     m = sys.coi_members

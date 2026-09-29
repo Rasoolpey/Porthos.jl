@@ -41,11 +41,19 @@ struct UndecidedBranch <: Exception
 end
 Base.showerror(io::IO, e::UndecidedBranch) = print(io, "UndecidedBranch: ", e.msg)
 
-# Decided comparisons. Extended for interval types at P11.
-@inline _gt(a, b) = a > b
-@inline _ge(a, b) = a >= b
-@inline _lt(a, b) = a < b
-@inline _le(a, b) = a <= b
+# Decided comparisons, on the primal values (a ForwardDiff.Dual compares by its value, as
+# ForwardDiff's own comparisons do). `src/roa/interval.jl` adds the interval methods of
+# `_gt_val` etc.: the decided outcome, or `UndecidedBranch`.
+@inline _primal(a) = a
+@inline _primal(a::ForwardDiff.Dual) = _primal(ForwardDiff.value(a))
+@inline _gt_val(a, b) = a > b
+@inline _ge_val(a, b) = a >= b
+@inline _lt_val(a, b) = a < b
+@inline _le_val(a, b) = a <= b
+@inline _gt(a, b) = _gt_val(_primal(a), _primal(b))
+@inline _ge(a, b) = _ge_val(_primal(a), _primal(b))
+@inline _lt(a, b) = _lt_val(_primal(a), _primal(b))
+@inline _le(a, b) = _le_val(_primal(a), _primal(b))
 
 """
     decide(rec, b::Bool) -> Bool
