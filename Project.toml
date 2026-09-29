@@ -1,0 +1,13 @@
+name = "Porthos"
+uuid = "31428472-c977-46bb-a705-fc739f40a03d"
+authors = ["Rasoolpey <149858924+Rasoolpey@users.noreply.github.com>"]
+version = "0.1.0-DEV"
+
+[compat]
+julia = "1.10"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

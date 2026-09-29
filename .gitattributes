@@ -1,0 +1,2 @@
+# LF everywhere: run records hash case files, so checkouts must be byte-identical across OSes.
+* text=auto eol=lf

@@ -1,0 +1,28 @@
+# Julia
+LocalPreferences.toml
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+/docs/build/
+
+# PackageCompiler system images
+/sysimage/
+*.so
+*.dll
+*.dylib
+
+# Run records (regenerable; each carries its own run.json)
+/outputs/
+
+# Python wrapper
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.CondaPkg/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
