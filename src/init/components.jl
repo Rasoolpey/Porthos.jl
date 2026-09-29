@@ -70,6 +70,105 @@ function init_from_phasor(c::GENSAL_PHTRUE, V::ComplexF64, I::ComplexF64)
     return x, MachineTargets(Efd, Tm, abs(V), _gensal_ifd(p, Eq_p, psi_d), vd, vq, id, iq)
 end
 
+# -- grid-forming converters -------------------------------------------------------------
+#
+# PHPS init_from_phasor of the converters: the internal EMF behind the series (and virtual)
+# impedance at the operating point, the measurement states settled at V and I, the
+# reservoir at P_STAR C_TANK, and the set-points captured there (p_set, u_set, q_set, ...;
+# PowerFactory's p_set_eff / u_set_eff). They are also PHPS's `rebalance_for_bus_voltage`
+# at a new bus voltage, with I = (u_out - V) / (j Zseries) from the existing Norton source.
+
+const ConverterComponent = Union{GFM_VSM_PHTRUE,GFM_DROOP_PHTRUE,GFM_VOC_PHTRUE}
+
+"""
+    converter_init(c, V, I) -> (x, params::Dict, targets::MachineTargets)
+
+A grid-forming converter's states at terminal voltage `V` and injected current `I`, and the
+parameters PHPS's initialisation sets (`Efd0`, `Tm0` and the model's set-points).
+"""
+function converter_init(c::GFM_VSM_PHTRUE, V::ComplexF64, I::ComplexF64)
+    p = c.p
+    d = param_dict(c)
+    Zs = p.Zseries
+    n_vi_init = p.n_vi < 1.0 ? 1.0 : p.n_vi
+    # the adaptive boost at the load-flow current, so init is exact in overcurrent too
+    ov_i = max(abs(I) - p.i_lim, 0.0)
+    r_eff_i = p.r_vi + p.kpr * ov_i
+    x_eff_i = p.x_vi + p.kpx * ov_i
+    Z_tot_i = complex(r_eff_i, Zs + x_eff_i)
+    E = V + n_vi_init * Z_tot_i * I
+    theta0 = angle(E)
+    u_mag0 = abs(E)
+    P_LF = real(V * conj(I))
+    params = Dict{String,Float64}("p_set" => P_LF, "u_set" => u_mag0, "PSET_REF" => P_LF,
+                                  "Efd0" => u_mag0, "Tm0" => P_LF)
+    p.v_set <= 1e-6 && (params["v_set"] = abs(V))
+    u_field0 = p.f_set > 1e-6 ? u_mag0 / p.f_set : u_mag0
+    x_tank0 = _p(d, "P_STAR", c.name) * p.C_TANK
+    x = [theta0, p.f_set, p.f_set, u_mag0, x_tank0, real(V), imag(V), real(I), imag(I), u_field0]
+    return x, params, _converter_targets(u_mag0, P_LF, V)
+end
+
+function converter_init(c::GFM_DROOP_PHTRUE, V::ComplexF64, I::ComplexF64)
+    p = c.p
+    d = param_dict(c)
+    Zs = p.Zseries
+    # the virtual-impedance drop present at the operating point: R always, X only in the
+    # paper Zv mode (the legacy X path is a high-pass, zero at steady state)
+    paper_zv = p.vi_mode > 0.5
+    Rv = 0.0
+    if p.adapt_vi > 0.5
+        S_min = max(p.S_min, 1.0e-3)
+        Sa0 = max(1.0, S_min)
+        Rv = max(p.a1 / Sa0 + p.a0, 0.0)
+    end
+    r_vi_i = p.r_vi + Rv
+    x_vi_i = paper_zv ? p.x_vi + Rv : 0.0
+    E = V + complex(r_vi_i, Zs + x_vi_i) * I
+    theta0 = angle(E)
+    u_mag0 = abs(E)
+    S = V * conj(I)
+    P_LF, Q_LF = real(S), imag(S)
+    params = Dict{String,Float64}("p_set" => P_LF, "q_set" => Q_LF, "u_set" => u_mag0,
+                                  "Efd0" => u_mag0, "Tm0" => P_LF)
+    x_tank0 = _p(d, "P_STAR", c.name) * p.C_TANK
+    x = [theta0, p.f_set, Q_LF, u_mag0, x_tank0, real(V), imag(V), real(I), imag(I), real(I),
+         imag(I), 1.0, real(I), imag(I)]
+    return x, params, _converter_targets(u_mag0, P_LF, V)
+end
+
+function converter_init(c::GFM_VOC_PHTRUE, V::ComplexF64, I::ComplexF64)
+    p = c.p
+    d = param_dict(c)
+    v0 = V + complex(p.r_vi, p.Zseries) * I
+    S = V * conj(I)
+    P_LF, Q_LF = real(S), imag(S)
+    params = Dict{String,Float64}("p_set" => P_LF, "q_set" => Q_LF, "PSET_REF" => P_LF,
+                                  "Efd0" => abs(v0), "Tm0" => P_LF)
+    _p(d, "vnom_from_lf", c.name) > 0.5 && (params["V_nom"] = abs(v0))
+    x_tank0 = _p(d, "P_STAR", c.name) * p.C_TANK
+    x = [real(v0), imag(v0), x_tank0, real(V), imag(V), real(I), imag(I), real(I), imag(I),
+         real(S), imag(S)]
+    return x, params, _converter_targets(abs(v0), P_LF, V)
+end
+
+_converter_targets(Efd, Tm, V) = MachineTargets(Efd, Tm, abs(V), 0.0, real(V), imag(V), 0.0, 0.0)
+
+"""
+    converter_current(c, x, V) -> ComplexF64
+
+The current a converter injects at bus voltage `V`: (u_out - V) / (j Zseries), with u_out
+its Norton source (PHPS rebalance_for_bus_voltage).
+"""
+function converter_current(c::ConverterComponent, x, V::ComplexF64)
+    u_out = complex(_converter_uout(c, x)...)
+    return _py_cdiv(u_out - V, complex(0.0, c.p.Zseries))
+end
+
+_converter_uout(c::GFM_VSM_PHTRUE, x) = _vsm_uout(NoModes(), c.p, x[1], _vsm_umag(c.p, x), x[6], x[7])
+_converter_uout(c::GFM_DROOP_PHTRUE, x) = _droop_uout(NoModes(), c.p, x)
+_converter_uout(c::GFM_VOC_PHTRUE, x) = _voc_uout(NoModes(), c.p, x)
+
 """
     init_from_targets(c, t::MachineTargets) -> (x, params::Dict)
 
@@ -144,10 +243,15 @@ function first_pass(case::Case; pf::PowerFlowResult = solve_powerflow(case))
         S_gens = _split_machine_power(comps, ks, S_total)
         for (k, Sg) in zip(ks, S_gens)
             I = conj(_py_cdiv(Sg, Vp))
-            xk, t = init_from_phasor(comps[k], Vp, I)
+            if comps[k] isa ConverterComponent
+                xk, pk, t = converter_init(comps[k], Vp, I)
+                init[name(comps[k])] = pk
+            else
+                xk, t = init_from_phasor(comps[k], Vp, I)
+                init[name(comps[k])] = Dict("Efd0" => t.Efd, "Tm0" => t.Tm)
+            end
             x[offsets[k]:offsets[k] + length(xk) - 1] .= xk
             targets[name(comps[k])] = t
-            init[name(comps[k])] = Dict("Efd0" => t.Efd, "Tm0" => t.Tm)
         end
     end
     # exciters and governors, from their machine

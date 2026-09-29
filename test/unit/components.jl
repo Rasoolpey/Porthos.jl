@@ -91,3 +91,63 @@ end
     @test_throws UnsupportedModelError build_component("GENROU_PHS", "G", Porthos.ParamDict())
     @test_throws UnsupportedModelError build_component("NOPE", "G", Porthos.ParamDict())
 end
+
+@testset "grid-forming converter models" begin
+    cases = ("GFM_VSM_PHTRUE" => "IEEE39Bus_PF_gfm-vsm/system_gfm_vsm.json",
+             "GFM_DROOP_PHTRUE" => "IEEE39Bus_PF_gfm-droop/system_gfm_droop.json",
+             "GFM_VOC_PHTRUE" => "IEEE39Bus_PF_gfm-voc/system_gfm_voc.json")
+    # parameters that switch on the branches the cases keep off
+    modes_on = Dict("GFM_VSM_PHTRUE" => Dict("pf_frame" => 1.0, "K_field" => 0.5, "Dq" => 5.0,
+                                             "n_vi" => 2.0, "D_direct" => 2.0),
+                    "GFM_DROOP_PHTRUE" => Dict("pf_frame" => 1.0, "adapt_droop" => 1.0,
+                                               "adapt_vi" => 1.0, "vi_mode" => 1.0,
+                                               "x_vi" => 0.01),
+                    "GFM_VOC_PHTRUE" => Dict("pf_frame" => 1.0, "i_ref_max" => 5.0,
+                                             "pvoc_mode" => 1.0))
+    for (type, file) in cases
+        case = load_case(case_path(file))
+        pf = solve_powerflow(case)
+        x0, init, _ = first_pass(case; pf)
+        spec = case.components[findfirst(s -> s.type == type, case.components)]
+        k = findfirst(s -> s.name == spec.name, case.components)
+        c = with_params(build_component(case, spec), init[spec.name])
+        o = 1 + sum(nstates(build_component(case, s)) for s in case.components[1:k - 1]; init = 0)
+        x = x0[o:o + nstates(c) - 1]
+        i = pf.spec.net.index[bus(c)]
+        V = pf.V[i] * cis(pf.theta[i])
+        u = [real(V); imag(V); ones(ninputs(c) - 2)]
+        @testset "$type" begin
+            n = nstates(c)
+            # the first pass is an equilibrium of the converter at its operating point
+            dx = rhs!(zeros(n), c, x, u)
+            @test maximum(abs, dx) <= 1e-9
+            I = converter_current(c, x, V)
+            _, pk, _ = converter_init(c, V, I)
+            @test isapprox(pk["p_set"], init[spec.name]["p_set"]; rtol = 1e-12)
+            @test norton_admittance(c) == Porthos._py_cdiv(1.0, complex(0.0, c.p.Zseries))
+            for (label, cc) in (("case", c), ("modes on", with_params(c, modes_on[type])))
+                # perturb away from the equilibrium, into the virtual-impedance regime too
+                for xp in (x .* (1 .+ 1e-3 .* sin.(1:n)), x .+ 0.05 .* cos.(1:n))
+                    y = zeros(noutputs(cc))
+                    dxp = zeros(n)
+                    @inferred rhs!(dxp, cc, xp, u)
+                    @inferred outputs!(y, cc, xp, u)
+                    @test alloc_rhs(dxp, cc, xp, u) == 0
+                    @test alloc_out(y, cc, xp, u) == 0
+                    @test all(isfinite, dxp) && all(isfinite, y)
+                    f(z) = rhs!(similar(z, n), cc, z, u)
+                    J = ForwardDiff.jacobian(f, xp)
+                    h = 1e-7
+                    Jfd = hcat([(f(xp .+ h .* (1:n .== j)) .- f(xp .- h .* (1:n .== j))) ./ (2h)
+                                for j in 1:n]...)
+                    @test isapprox(J, Jfd; rtol = 1e-4, atol = 1e-4 * max(1.0, maximum(abs, J)))
+                    @test modes(cc, ForwardDiff.Dual.(xp, 1.0), u) == modes(cc, xp, u)
+                    g = grad_hamiltonian(cc, xp)
+                    @test isapprox(g, ForwardDiff.gradient(z -> hamiltonian(cc, z), xp);
+                                   rtol = 1e-12, atol = 1e-14)
+                end
+            end
+            @test contract(c).model == contract_key(type)
+        end
+    end
+end

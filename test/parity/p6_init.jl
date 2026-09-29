@@ -11,7 +11,8 @@
 const P6_RES_TOL = 1e-12
 const P6_MATCH = 1e-10
 const P6_PARAM_ATOL = 1e-8
-const INIT_KEYS = ("Efd0", "Tm0", "PFD_REF", "Vref", "PM_REF", "Pref", "V0", "Vini")
+const INIT_KEYS = ("Efd0", "Tm0", "PFD_REF", "Vref", "PM_REF", "Pref", "V0", "Vini",
+                   "p_set", "u_set", "q_set", "v_set", "PSET_REF", "V_nom")
 
 @testset "P6 initialisation parity" begin
     for file in sort([string(k) for k in keys(PACK.manifest[:files])
@@ -64,9 +65,11 @@ const INIT_KEYS = ("Efd0", "Tm0", "PFD_REF", "Vref", "PM_REF", "Pref", "V0", "Vi
 
             # the parameters initialisation sets
             worst = 0.0
+            comps = Dict(Porthos.name(c) => c for c in sys.comps)
             for c in d[:components], (k, v) in c[:params]
                 string(k) in INIT_KEYS || continue
-                ours = r.init_params[string(c[:name])][string(k)]
+                # the value Porthos simulates with (set by its initialisation, or the case's)
+                ours = Porthos.param_value(param_dict(comps[string(c[:name])])[string(k)])
                 worst = max(worst, abs(ours - Float64(v)))
                 @test abs(ours - Float64(v)) <= P6_PARAM_ATOL
             end

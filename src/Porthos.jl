@@ -48,6 +48,10 @@ include("components/exciters/ieeet1.jl")
 include("components/governors/ieeeg1.jl")
 include("components/governors/ieeeg3.jl")
 include("components/loads/complexload.jl")
+include("components/converters/common.jl")
+include("components/converters/gfm_vsm.jl")
+include("components/converters/gfm_droop.jl")
+include("components/converters/gfm_voc.jl")
 include("components/dispatch.jl")
 include("components/observables.jl")
 
@@ -97,13 +101,15 @@ export AbstractComponent, build_component, with_params, model_type, state_names,
        output_names, nstates, ninputs, noutputs, params, param_dict, ports, bus, rhs!,
        outputs!, step_outputs!, modes, hamiltonian, grad_hamiltonian!, grad_hamiltonian,
        injection, norton_admittance, default_contracts
-export GENROU_PHTRUE, GENSAL_PHTRUE, IEEET1_PHTRUE, IEEEG1_PHTRUE, IEEEG3_PHTRUE, COMPLEXLOAD
+export GENROU_PHTRUE, GENSAL_PHTRUE, IEEET1_PHTRUE, IEEEG1_PHTRUE, IEEEG3_PHTRUE, COMPLEXLOAD,
+       GFM_VSM_PHTRUE, GFM_DROOP_PHTRUE, GFM_VOC_PHTRUE
 export NoModes, ModeLog, UndecidedBranch, component_role
 # assembly
 export DAESystem, assemble, dae_residual!, dae_residual, nalg, resolve_wiring, InputSource,
        jacobian_pattern
 # initialisation
 export init_from_phasor, init_from_targets, MachineTargets, first_pass, solve_equilibrium,
+       converter_init, converter_current, lag_states,
        EquilibriumResult, component_io
 # simulation
 export DAEWorkspace, SimResult, simulate_bdf1, simulate_ida, consistent_voltages!,

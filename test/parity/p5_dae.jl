@@ -6,7 +6,8 @@
 # checks that no other parameter differs from Porthos's own processing.
 
 const P5_TOL = 1e-12
-const INIT_SET_KEYS = Set(["Efd0", "Tm0", "PFD_REF", "Vref", "PM_REF", "Pref", "V0", "Vini"])
+const INIT_SET_KEYS = Set(["Efd0", "Tm0", "PFD_REF", "Vref", "PM_REF", "Pref", "V0", "Vini",
+                           "p_set", "u_set", "q_set", "v_set", "PSET_REF", "V_nom"])
 
 # a PHPS C++ wiring expression as an InputSource
 function phps_source(expr, names::Dict{String,Int}, outputs)

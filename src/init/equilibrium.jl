@@ -33,7 +33,31 @@ Base.show(io::IO, r::EquilibriumResult) =
     print(io, "EquilibriumResult(", r.sys.n_diff, " states, residual ", r.residual, ", ",
           r.iterations, " Newton iterations)")
 
-const RESERVOIR_STATES = ("x_field", "x_steam", "x_water")
+const RESERVOIR_STATES = ("x_field", "x_steam", "x_water", "x_tank")
+
+# Grid-forming converters (PHPS rebalance_for_bus_voltage): their Norton source keeps its
+# first-pass value and their set-points are recaptured at the final bus voltage. In the solve,
+# the rows the set-points close (the swing and EMF-magnitude rows of VSM and droop, the two
+# oscillator rows of VOC) are replaced by "Norton current = first-pass value".
+_setpoint_rows(::Union{GFM_VSM_PHTRUE,GFM_DROOP_PHTRUE}) = (2, 4)
+_setpoint_rows(::GFM_VOC_PHTRUE) = (1, 2)
+
+struct _ConverterClosure
+    k::Int                         # component index
+    rows::Vector{Int}              # its residual rows closed by the set-points
+    target::NTuple{2,Float64}      # its first-pass Norton current
+end
+
+function _converter_closures(sys::DAESystem, x::AbstractVector)
+    out = _ConverterClosure[]
+    for (k, c) in enumerate(sys.comps)
+        c isa ConverterComponent || continue
+        o = sys.offsets[k]
+        push!(out, _ConverterClosure(k, [o + j - 1 for j in _setpoint_rows(c)],
+                                     injection(c, view(x, o:o + nstates(c) - 1), nothing)))
+    end
+    return out
+end
 
 # the state index held fixed for the rotation gauge, or 0 when a bus voltage is fixed
 function _gauge_state(sys::DAESystem)
@@ -83,8 +107,10 @@ function component_io(sys::DAESystem, x, V)
 end
 
 # Inner solve: every residual row except the reservoir rows and the delta_COI row, so the
-# common frequency is free (it settles where the set-points balance the power).
-function _newton!(y, sys::DAESystem; tol, maxiter)
+# common frequency is free (it settles where the set-points balance the power); for each
+# converter, its set-point rows are replaced by its Norton-source rows.
+function _newton!(y, sys::DAESystem; tol, maxiter,
+                  closures::Vector{_ConverterClosure} = _ConverterClosure[])
     nd = sys.n_diff
     res = _reservoir_states(sys)
     fixed = Set(res)
@@ -92,8 +118,22 @@ function _newton!(y, sys::DAESystem; tol, maxiter)
     g0 = _gauge_state(sys)
     g0 > 0 && push!(fixed, g0)
     cols = [j for j in 1:length(y) if !(j in fixed)]
-    rows = [r for r in 1:length(y) if !(r in res) && r != sys.delta_coi]
-    F(z) = vcat(dae_residual(sys, view(z, 1:nd), view(z, nd + 1:length(z)))...)
+    dropped = Set(r for cl in closures for r in cl.rows)
+    rows = [r for r in 1:length(y) if !(r in res) && r != sys.delta_coi && !(r in dropped)]
+    function F(z)
+        full = vcat(dae_residual(sys, view(z, 1:nd), view(z, nd + 1:length(z)))...)
+        isempty(closures) && return full
+        extra = similar(full, 2 * length(closures))
+        for (q, cl) in enumerate(closures)
+            c = sys.comps[cl.k]
+            o = sys.offsets[cl.k]
+            I_Re, I_Im = injection(c, view(z, o:o + nstates(c) - 1), nothing)
+            extra[2q - 1] = I_Re - cl.target[1]
+            extra[2q] = I_Im - cl.target[2]
+        end
+        return vcat(full, extra)
+    end
+    rows = vcat(rows, length(y) .+ (1:2 * length(closures)))
     it = 0
     r = F(y)[rows]
     while maximum(abs, r) > tol && it < maxiter
@@ -154,7 +194,8 @@ function solve_equilibrium(case::Case, scenario::Union{Nothing,Scenario} = nothi
         V[2i] = pf.V[i] * sin(pf.theta[i])
     end
     y = vcat(copy(x_init), V)
-    iters = _newton!(y, sys; tol, maxiter)
+    closures = _converter_closures(sys, x_init)
+    iters = _newton!(y, sys; tol, maxiter, closures)
 
     slack = _slack_setpoint(sys)
     rebuild() = (sys = assemble(case, scenario; init_params = init, phps_rounding))
@@ -180,7 +221,7 @@ function solve_equilibrium(case::Case, scenario::Union{Nothing,Scenario} = nothi
         init[cname][key] = P0 + h
         rebuild()
         yh = copy(y)
-        iters += _newton!(yh, sys; tol, maxiter)
+        iters += _newton!(yh, sys; tol, maxiter, closures)
         dedp = (_coi_omega(sys, yh) - 1.0 - e0) / h
         init[cname][key] = P0
         rebuild()
@@ -192,11 +233,21 @@ function solve_equilibrium(case::Case, scenario::Union{Nothing,Scenario} = nothi
             init[slack[1]][slack[2]] -= e / dedp
         end
         rebuild()
-        iters += _newton!(y, sys; tol, maxiter)
+        iters += _newton!(y, sys; tol, maxiter, closures)
         (vchange == 0.0 && abs(eps()) * sys.omega_b <= tol) && break
     end
-    # reservoir references: the power each reservoir supplies at the equilibrium
+    # converter set-points, recaptured at the final bus voltage from their Norton source
     x, Vs = y[1:nd], y[nd + 1:end]
+    for cl in closures
+        c = sys.comps[cl.k]
+        o = sys.offsets[cl.k]
+        i = sys.net.index[bus(c)]
+        Vc = complex(Vs[2i - 1], Vs[2i])
+        xc = view(x, o:o + nstates(c) - 1)
+        _, pk, _ = converter_init(c, Vc, converter_current(c, xc, Vc))
+        merge!(init[name(c)], pk)
+    end
+    # reservoir references: the power each reservoir supplies at the equilibrium
     ins, outs = component_io(sys, x, Vs)
     for (k, c) in enumerate(sys.comps)
         o = sys.offsets[k]
@@ -207,7 +258,44 @@ function solve_equilibrium(case::Case, scenario::Union{Nothing,Scenario} = nothi
         end
     end
     rebuild()
+    x = _settle_lags!(sys, x, Vs)
     f, g = dae_residual(sys, x, Vs)
     res = max(maximum(abs, f), maximum(abs, g))
     return EquilibriumResult(sys, x, Vs, x_init, init, res, iters)
+end
+
+# Settle the lag states (`lag_states`) on their own equations in floating point: after the
+# Newton solve a lag row (a - x)/T still carries the rounding of a, amplified by 1/T (a
+# converter's measured current: about 2e-16/(Zseries T), 1e-12 and more). Gauss-Seidel sweeps
+# x += T f set each x to the value its equation computes, so a row whose target does not
+# depend on its own state becomes exactly zero. A loop through two lag states with gain 1
+# (a droop converter's measured current through its virtual resistance, r_vi = Zseries)
+# makes the sweeps alternate between two iterates; every third sweep jumps to their midpoint.
+# The best iterate is kept; the states move by rounding amounts only.
+function _settle_lags!(sys::DAESystem, x::Vector{Float64}, V::Vector{Float64}; sweeps::Int = 12)
+    lags = [(sys.offsets[k] + j - 1, T) for (k, c) in enumerate(sys.comps) for (j, T) in lag_states(c)]
+    isempty(lags) && return x
+    ws = DAEWorkspace(sys)
+    f = zeros(sys.n_diff)
+    g = zeros(nalg(sys))
+    nofault = falses(length(sys.faults))
+    res(z) = (dae_residual!(f, g, sys, ws, z, V, nofault); max(maximum(abs, f), maximum(abs, g)))
+    best, xbest = res(x), copy(x)
+    y = copy(x)
+    prev = similar(y)
+    for sweep in 1:sweeps
+        prev .= y
+        for (i, T) in lags
+            dae_residual!(f, g, sys, ws, y, V, nofault)
+            y[i] += T * f[i]
+        end
+        r = res(y)
+        r < best && (best = r; xbest .= y)
+        if sweep % 3 == 2
+            for (i, _) in lags
+                y[i] = 0.5 * (y[i] + prev[i])
+            end
+        end
+    end
+    return xbest
 end

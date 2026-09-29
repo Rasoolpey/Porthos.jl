@@ -67,9 +67,9 @@ PARITY_CASES = [
 # ba11ea1 cannot initialise it (coupled network solve does not converge at t = 0).
 DAE_CASES = ("base", "gfl", "vsm", "droop", "voc")
 
-# Cases with reference simulations: the base case now; the converter cases follow with
-# their models (roadmap order of work).
-SIM_CASES = ("base",)
+# Cases with reference simulations: the base case and the grid-forming converter cases (gfl
+# follows with its model, after its reservoir rework).
+SIM_CASES = ("base", "vsm", "droop", "voc")
 
 SECTIONS = ("network", "powerflow", "records", "components", "dae", "sim")
 

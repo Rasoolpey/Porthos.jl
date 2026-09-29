@@ -105,3 +105,53 @@ function observable_values!(v, c::COMPLEXLOAD, x, u, y)
     v[2] = y[4]
     return v
 end
+
+# -- grid-forming converters -------------------------------------------------------------
+# (their C++ expressions use this value of pi)
+const _PHPS_PI_GFM = 3.14159265358979
+
+observable_names(::GFM_VSM_PHTRUE) =
+    ["theta_deg", "omega", "u_mag", "i_mag", "H_kin", "H_damp", "H_tank"]
+
+function observable_values!(v, c::GFM_VSM_PHTRUE, x, u, y)
+    p = c.p
+    v[1] = x[1] * 180.0 / _PHPS_PI_GFM
+    v[2] = x[2]
+    v[3] = x[4]
+    v[4] = sqrt(x[8] * x[8] + x[9] * x[9])
+    v[5] = 0.5 * p.Ta * (x[2] - p.f_set) * (x[2] - p.f_set)
+    v[6] = 0.5 * p.Dp / p.omega_c * (x[3] - p.f_set) * (x[3] - p.f_set)
+    v[7] = 0.5 * x[5] * x[5] / p.C_TANK
+    return v
+end
+
+observable_names(::GFM_DROOP_PHTRUE) =
+    ["theta_deg", "omega", "q_lpf", "u_mag", "i_mag", "H_kin", "H_tank"]
+
+function observable_values!(v, c::GFM_DROOP_PHTRUE, x, u, y)
+    p = c.p
+    v[1] = x[1] * 180.0 / _PHPS_PI_GFM
+    v[2] = x[2]
+    v[3] = x[3]
+    v[4] = x[4]
+    v[5] = sqrt(x[8] * x[8] + x[9] * x[9])
+    v[6] = 0.5 * p.Ta * (x[2] - p.f_set) * (x[2] - p.f_set)
+    v[7] = 0.5 * x[5] * x[5] / p.C_TANK
+    return v
+end
+
+observable_names(::GFM_VOC_PHTRUE) =
+    ["theta_deg", "v_mag", "chi", "i_mag", "H_osc", "H_orbit", "H_tank"]
+
+function observable_values!(v, c::GFM_VOC_PHTRUE, x, u, y)
+    p = c.p
+    s = x[1] * x[1] + x[2] * x[2]
+    v[1] = atan(x[2], x[1]) * 180.0 / _PHPS_PI_GFM
+    v[2] = sqrt(s)
+    v[3] = p.xi * (p.V_nom * p.V_nom - s)
+    v[4] = sqrt(x[6] * x[6] + x[7] * x[7])
+    v[5] = 0.5 * s / p.eta
+    v[6] = 0.25 * (s - p.V_nom * p.V_nom) * (s - p.V_nom * p.V_nom) / (p.eta * p.xi)
+    v[7] = 0.5 * x[3] * x[3] / p.C_TANK
+    return v
+end

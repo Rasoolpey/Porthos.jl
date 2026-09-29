@@ -22,11 +22,24 @@ Sampling: states and inputs are drawn around the initialised equilibrium, with w
 on limited quantities so both sides of every limiter occur. A sample whose branch outcomes
 change under a relative perturbation of 1e-9 is within rounding distance of a switching
 surface and is redrawn.
+
+Conditions inside a loop (the converters' 60-step bisection for the virtual-impedance
+current) belong to a numerical root solve: their late outcomes sit on the root by
+construction and flip under any perturbation. They are recorded and marked `in_loop`, and
+left out of the redraw test; Porthos does not match them (the solve's result is compared
+through the outputs).
+
+Parameter variants (`VARIANTS`): some branches cannot switch with a case's parameters (the
+pf_frame reference-frame input, the VSM field controller, the droop's adaptive droop and
+virtual impedance, the passivity-based VOC). A variant is a copy of the type's first case
+instance with a few parameters overridden (recorded as `variant_of` and `overrides`); it is
+sampled like the others, so those branches are exercised and checked too.
 """
 
 from __future__ import annotations
 
 import contextlib
+import copy
 import io
 import math
 import re
@@ -47,6 +60,35 @@ COMPONENT_SOURCES = {
     "IEEEG1_PHTRUE": "base",
     "IEEEG3_PHTRUE": "base",
     "COMPLEXLOAD": "base",
+    # grid-forming converters (P4 item 5), each on its own case
+    "GFM_VSM_PHTRUE": "vsm",
+    "GFM_DROOP_PHTRUE": "droop",
+    "GFM_VOC_PHTRUE": "voc",
+}
+
+# seed offsets: the order in which the types joined the pack (v2: the sorted synchronous-
+# machine set; v6: the grid-forming converters). Append new types at the end.
+SEED_ORDER = ["COMPLEXLOAD", "GENROU_PHTRUE", "GENSAL_PHTRUE", "IEEEG1_PHTRUE",
+              "IEEEG3_PHTRUE", "IEEET1_PHTRUE", "GFM_DROOP_PHTRUE", "GFM_VOC_PHTRUE",
+              "GFM_VSM_PHTRUE"]
+
+# type -> [(suffix, parameter overrides)]: copies of the first instance that exercise the
+# branches the case's parameters keep fixed
+VARIANTS = {
+    "GFM_VSM_PHTRUE": [("modes", {"pf_frame": 1.0, "K_field": 0.5, "Dq": 5.0, "n_vi": 2.0,
+                                  "D_direct": 2.0})],
+    "GFM_DROOP_PHTRUE": [("modes", {"pf_frame": 1.0, "adapt_droop": 1.0, "adapt_vi": 1.0,
+                                    "vi_mode": 1.0, "x_vi": 0.01})],
+    "GFM_VOC_PHTRUE": [("modes", {"pf_frame": 1.0, "i_ref_max": 5.0})],
+}
+
+# type -> {site text: reason}: state-dependent sites that no sample can reach, recorded as
+# `unreached` (the coverage check then requires that they were never reached)
+UNREACHED = {
+    # pvoc_mode = 1 (Kong et al.) calls tanh, which PHPS's Python translation of the
+    # kernels (src/dirac/py_codegen at ba11ea1) does not provide: PHPS can only run that
+    # mode compiled, so there is no Python reference for it. No parity case uses it.
+    "GFM_VOC_PHTRUE": {"vsq > 1.0e-6": "pvoc_mode = 1 only; PHPS's py_codegen has no tanh"},
 }
 
 _KEYWORDS = {"and", "or", "not", "True", "False", "math", "abs", "min", "max"}
@@ -101,7 +143,16 @@ class Kernel:
                     nonconst.add(n)
                     changed = True
         const = assigned - nonconst
-        lines = [self._instrument(line, const) for line in body.split("\n")]
+        lines = []
+        loop_indent = None
+        for line in body.split("\n"):
+            indent = len(line) - len(line.lstrip())
+            if loop_indent is not None and line.strip() and indent <= loop_indent:
+                loop_indent = None
+            self._in_loop = loop_indent is not None
+            lines.append(self._instrument(line, const))
+            if loop_indent is None and re.match(r"^\s*for .+:\s*$", line):
+                loop_indent = indent
         self.source = "\n".join(lines)
         args = "x, dxdt, inputs, outputs, t" if mode == "step" else "x, inputs, outputs, t"
         src = "import math as math\ndef _k(%s, _br):\n" % args
@@ -114,8 +165,10 @@ class Kernel:
         ids = {t for t in _IDENT.findall(cond)} - _KEYWORDS
         state_dep = ("x[" in cond or "inputs[" in cond or "outputs[" in cond
                      or not ids <= const)
-        self.sites.append({"id": len(self.sites), "text": cond.strip(),
-                           "param_only": not state_dep})
+        site = {"id": len(self.sites), "text": cond.strip(), "param_only": not state_dep}
+        if getattr(self, "_in_loop", False):
+            site["in_loop"] = True
+        self.sites.append(site)
         return len(self.sites) - 1
 
     def _instrument(self, line: str, const: set) -> str:
@@ -245,6 +298,74 @@ def sample_point(ctype: str, comp, x_star, u_star, rng):
             vini = float(p.get("Vini", p.get("V0", 1.0)))
             X["z"] = _mix(rng, 0.1, lambda: X["z"] + rng.uniform(-0.3, 0.3),
                           lambda: rng.uniform(-1.3 * vini, -0.9 * vini))
+    elif ctype in ("GFM_VSM_PHTRUE", "GFM_DROOP_PHTRUE"):
+        # mostly local draws (virtual impedance inert), sometimes wide ones (it engages)
+        wide = rng.random() < 0.4
+        X["theta"] += rng.uniform(-0.5, 0.5) if wide else rng.uniform(-0.02, 0.02)
+        X["omega"] = rng.uniform(0.95, 1.05)
+        X["u_mag"] = _rel(rng, X["u_mag"], 0.2 if wide else 0.02)
+        X["x_tank"] = _reservoir(rng, X["x_tank"], float(p["C_TANK"]))
+        for k in ("Vd_meas", "Vq_meas"):
+            X[k] += rng.uniform(-0.4, 0.4) if wide else rng.uniform(-0.02, 0.02)
+        U["Vd"] += rng.uniform(-0.2, 0.2)
+        U["Vq"] += rng.uniform(-0.2, 0.2)
+        # the pf_frame speed input: unwired (0) or live
+        U["omega_ref"] = 0.0 if rng.random() < 0.3 else rng.uniform(0.95, 1.05)
+        if ctype == "GFM_VSM_PHTRUE":
+            X["omega_f"] = rng.uniform(0.95, 1.05)
+            for k in ("Id_meas", "Iq_meas"):
+                X[k] = _rel(rng, X[k], 0.3, 0.5)
+            # the field flux near either projection bound, or near its equilibrium
+            lo, hi, bw = float(p["uf_min"]), float(p["uf_max"]), float(p["uf_band"])
+            r = rng.random()
+            X["u_field"] = (rng.uniform(hi - 2 * bw, hi + bw) if r < 0.3 else
+                            rng.uniform(lo - bw, lo + 2 * bw) if r < 0.6 else
+                            _rel(rng, X["u_field"], 0.2))
+        else:
+            X["q_lpf"] = _rel(rng, X["q_lpf"], 0.3, 0.5)
+            # measured current: near the equilibrium, or up to beyond the overcurrent
+            # threshold i_lim and the converter limit i_con_lim
+            if rng.random() < 0.5:
+                Id, Iq = _rel(rng, X["Id_meas"], 0.3, 0.5), _rel(rng, X["Iq_meas"], 0.3, 0.5)
+            else:
+                m = rng.uniform(0.0, 1.4 * max(float(p["i_lim"]), float(p["i_con_lim"])))
+                a = rng.uniform(-math.pi, math.pi)
+                Id, Iq = m * math.cos(a), m * math.sin(a)
+            X["Id_meas"], X["Iq_meas"] = Id, Iq
+            for k, c in (("Id_lpf2", Id), ("Iq_lpf2", Iq), ("Id_lpfz", Id), ("Iq_lpfz", Iq)):
+                X[k] = c + rng.uniform(-1.0, 1.0)
+            # available capacity: around S_min, above a1/-a0 (Rv < 0), or huge (mp_e < 1e-9)
+            r = rng.random()
+            X["Sa"] = (rng.uniform(0.0, 1.5) if r < 0.6 else rng.uniform(1.5, 6.0) if r < 0.95
+                       else rng.uniform(1e8, 2e8))
+            U["S_avail"] = rng.uniform(-0.5, 1.5)
+
+    elif ctype == "GFM_VOC_PHTRUE":
+        v = complex(X["v_alpha"], X["v_beta"])
+        r = rng.random()
+        if r < 0.05:        # |v| < 1e-3: below the pVOC guard v^2 > 1e-6
+            a = rng.uniform(-math.pi, math.pi)
+            v = rng.uniform(0.0, 1e-3) * complex(math.cos(a), math.sin(a))
+        elif r < 0.45:      # wide: the virtual impedance engages
+            v *= rng.uniform(0.6, 1.4) * complex(math.cos(a := rng.uniform(-0.5, 0.5)), math.sin(a))
+        else:
+            v *= rng.uniform(0.98, 1.02) * complex(math.cos(a := rng.uniform(-0.02, 0.02)), math.sin(a))
+        X["v_alpha"], X["v_beta"] = v.real, v.imag
+        X["x_tank"] = _reservoir(rng, X["x_tank"], float(p["C_TANK"]))
+        wide = r < 0.45
+        for k in ("Vd_meas", "Vq_meas"):
+            X[k] += rng.uniform(-0.4, 0.4) if wide else rng.uniform(-0.02, 0.02)
+        for k in ("Id_meas", "Iq_meas", "Id_lpf2", "Iq_lpf2", "p_pvoc", "q_pvoc"):
+            X[k] = _rel(rng, X[k], 0.3, 0.5)
+        if rng.random() < 0.1:   # a (nearly) bolted terminal: |V| < 0.01 pu
+            m, a = rng.uniform(0.0, 0.02), rng.uniform(-math.pi, math.pi)
+            U["Vd"], U["Vq"] = m * math.cos(a), m * math.sin(a)
+        else:
+            U["Vd"] += rng.uniform(-0.2, 0.2)
+            U["Vq"] += rng.uniform(-0.2, 0.2)
+        for k in ("omega_ref", "omega_aux"):
+            U[k] = 0.0 if rng.random() < 0.3 else rng.uniform(0.95, 1.05)
+
     else:
         raise ValueError(f"no sampling box for {ctype}")
 
@@ -322,7 +443,10 @@ def section_components(phps_root, case_by_name: dict, seed: int = 20260929) -> d
 
     built = {}
     records = {}
-    for t_index, (ctype, case_name) in enumerate(sorted(COMPONENT_SOURCES.items())):
+    for ctype, case_name in sorted(COMPONENT_SOURCES.items()):
+        # the seed offset is the type's place in SEED_ORDER, so adding a type does not
+        # change the samples of the others
+        t_index = SEED_ORDER.index(ctype)
         if case_name not in built:
             built[case_name] = build_initialised(phps_root, case_by_name[case_name])
         runner, solver, x0, u_star, pre_init = built[case_name]
@@ -349,8 +473,30 @@ def section_components(phps_root, case_by_name: dict, seed: int = 20260929) -> d
             kernels[c.name] = (Kernel(c, "step"), Kernel(c, "out"),
                                make_step_func(c), make_out_func(c))
 
+        # parameter variants of the first instance (VARIANTS)
+        variants = []
+        for suffix, overrides in VARIANTS.get(ctype, []):
+            base = comps[0]
+            v = copy.deepcopy(base)
+            v.name = f"{base.name}__{suffix}"
+            v.params.update(overrides)
+            ib = instances[base.name]
+            instances[v.name] = {
+                "variant_of": base.name,
+                "overrides": dict(overrides),
+                "params_used": _num_params(v.params),
+                "init_set": ib["init_set"],
+                "x_star": ib["x_star"],
+                "u_star": ib["u_star"],
+            }
+            kernels[v.name] = (Kernel(v, "step"), Kernel(v, "out"),
+                               make_step_func(v), make_out_func(v))
+            variants.append(v)
+        # the variants take about half of the samples
+        order = comps + variants * len(comps)
+
         first = kernels[comps[0].name]
-        for c in comps[1:]:
+        for c in comps[1:] + variants:
             for kidx in (0, 1):
                 a = [s["text"] for s in first[kidx].sites]
                 b = [s["text"] for s in kernels[c.name][kidx].sites]
@@ -361,13 +507,17 @@ def section_components(phps_root, case_by_name: dict, seed: int = 20260929) -> d
         samples = []
         redrawn = 0
         while len(samples) < N_SAMPLES:
-            c = comps[len(samples) % len(comps)]
+            c = order[len(samples) % len(order)]
             kstep, kout, ref_step, ref_out = kernels[c.name]
             inst = instances[c.name]
             x, u = sample_point(ctype, c, inst["x_star"], inst["u_star"], rng)
             dxdt, o1, o2, br_out, br_step = _evaluate(kstep, kout, c, x, u)
 
-            # redraw samples within rounding distance of a switching surface
+            # redraw samples within rounding distance of a switching surface (conditions
+            # inside a loop are a root solve's, not switching surfaces)
+            def switching(br, kern):
+                loop = {st["id"] for st in kern.sites if st.get("in_loop")}
+                return [b for b in br if b[0] not in loop]
             near = False
             for _ in range(N_PERTURB):
                 xp = x * (1.0 + PERTURB_REL * rng.uniform(-1, 1, x.size)) \
@@ -375,7 +525,8 @@ def section_components(phps_root, case_by_name: dict, seed: int = 20260929) -> d
                 up = u * (1.0 + PERTURB_REL * rng.uniform(-1, 1, u.size)) \
                     + PERTURB_REL * rng.uniform(-1, 1, u.size)
                 _, _, _, bo, bs = _evaluate(kstep, kout, c, xp, up)
-                if bo != br_out or bs != br_step:
+                if (switching(bo, kout) != switching(br_out, kout)
+                        or switching(bs, kstep) != switching(br_step, kstep)):
                     near = True
                     break
             if near:
@@ -414,6 +565,13 @@ def section_components(phps_root, case_by_name: dict, seed: int = 20260929) -> d
                     seen[k].add(b)
             coverage[mode] = {str(k): sorted(v) for k, v in seen.items()}
             for s in sites:
+                reason = UNREACHED.get(ctype, {}).get(s["text"])
+                if reason is not None:
+                    if seen[s["id"]]:
+                        raise RuntimeError(f"{ctype} {mode} site {s['id']} ({s['text']}) "
+                                           "is listed as unreached but was reached")
+                    s["unreached"] = reason
+                    continue
                 if not s["param_only"] and seen[s["id"]] != {False, True}:
                     raise RuntimeError(
                         f"{ctype} {mode} site {s['id']} ({s['text']}) not exercised both "

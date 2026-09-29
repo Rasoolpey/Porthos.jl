@@ -14,6 +14,9 @@
     c isa IEEEG1_PHTRUE && return _outputs!(y, c, x, u, c.p, rec)
     c isa IEEEG3_PHTRUE && return _outputs!(y, c, x, u, c.p, rec)
     c isa COMPLEXLOAD && return _outputs!(y, c, x, u, c.p, rec)
+    c isa GFM_VSM_PHTRUE && return _outputs!(y, c, x, u, c.p, rec)
+    c isa GFM_DROOP_PHTRUE && return _outputs!(y, c, x, u, c.p, rec)
+    c isa GFM_VOC_PHTRUE && return _outputs!(y, c, x, u, c.p, rec)
     return _outputs!(y, c, x, u, params(c), rec)
 end
 
@@ -24,5 +27,8 @@ end
     c isa IEEEG1_PHTRUE && return _step!(dx, y, c, x, u, c.p, rec)
     c isa IEEEG3_PHTRUE && return _step!(dx, y, c, x, u, c.p, rec)
     c isa COMPLEXLOAD && return _step!(dx, y, c, x, u, c.p, rec)
+    c isa GFM_VSM_PHTRUE && return _step!(dx, y, c, x, u, c.p, rec)
+    c isa GFM_DROOP_PHTRUE && return _step!(dx, y, c, x, u, c.p, rec)
+    c isa GFM_VOC_PHTRUE && return _step!(dx, y, c, x, u, c.p, rec)
     return _step!(dx, y, c, x, u, params(c), rec)
 end

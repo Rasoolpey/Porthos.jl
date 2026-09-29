@@ -14,7 +14,11 @@ function p4_atol(refs::Vector{Vector{Float64}})
     return [1e-12 * max(maximum(abs(r[i]) for r in refs), 1e-300) for i in 1:n]
 end
 
-state_dependent(sites) = Set(Int(s[:id]) for s in sites if !s[:param_only])
+# the switching sites: state-dependent, not inside a loop (a root solve's comparisons), and
+# reachable by the pack's samples
+state_dependent(sites) = Set(Int(s[:id]) for s in sites
+                             if !s[:param_only] && !get(s, :in_loop, false) &&
+                                !haskey(s, :unreached))
 
 phps_modes(branches, dep) = Bool[b[2] for b in branches if Int(b[1]) in dep]
 
@@ -33,9 +37,14 @@ numeric_params(d) = Dict(string(k) => Float64(v) for (k, v) in d
             case = load_case(case_path(cases[string(rec[:case])].system))
             comps = Dict{String,AbstractComponent}()
             for (nm, inst) in rec[:instances]
-                c = build_component(case, component(case, string(nm)))
-                comps[string(nm)] = with_params(c, Dict(string(k) => Float64(v)
-                                                        for (k, v) in inst[:init_set]))
+                # a parameter variant is its case instance with a few parameters overridden
+                base = string(get(inst, :variant_of, nm))
+                c = build_component(case, component(case, base))
+                set = Dict(string(k) => Float64(v) for (k, v) in inst[:init_set])
+                for (k, v) in get(inst, :overrides, Dict())
+                    set[string(k)] = Float64(v)
+                end
+                comps[string(nm)] = with_params(c, set)
             end
             c1 = first(values(comps))
             @test model_type(c1) == ctype
@@ -72,6 +81,13 @@ numeric_params(d) = Dict(string(k) => Float64(v) for (k, v) in d
                     seen = Set(b[2] for s in samples for b in s[Symbol("branches_", kernel)]
                                if Int(b[1]) == k)
                     @test seen == Set([false, true])
+                end
+                # sites the pack lists as unreached (with the reason) were never reached
+                for kernel in (:step, :out), st in rec[:sites][kernel]
+                    haskey(st, :unreached) || continue
+                    @test !any(Int(b[1]) == Int(st[:id]) for s in samples
+                               for b in s[Symbol("branches_", kernel)])
+                    @info "$ctype: $kernel site $(st[:id]) ($(st[:text])) not reached: $(st[:unreached])"
                 end
             end
 

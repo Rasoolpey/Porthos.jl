@@ -110,6 +110,15 @@ grad_hamiltonian!(g, c::AbstractComponent, x) = grad_hamiltonian!(g, c, x, param
 grad_hamiltonian(c::AbstractComponent, x, p = params(c)) =
     grad_hamiltonian!(zeros(eltype(x), nstates(c)), c, x, p)
 
+"""
+    lag_states(c) -> Vector{Tuple{Int,Float64}}
+
+The component's first-order lag states `(j, T)`: `x_j' = (a - x_j) / T`, with `T` the
+(guarded) time constant its kernel divides by (measurement lags, filters). The equilibrium
+solve settles them exactly on their equations in floating point.
+"""
+lag_states(c::AbstractComponent) = Tuple{Int,Float64}[]
+
 """Bus id of a network-attached component, `nothing` otherwise."""
 bus(c::AbstractComponent) = nothing
 
