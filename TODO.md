@@ -50,7 +50,9 @@ discussed with the user before they are implemented.
 1. ~~Record the certificate decision~~ and ~~add the roadmap override~~ (done 2026-10-01).
 2. ~~**Publish pack v6**~~ (done 2026-09-30: release `parity-pack-v6`, the downloaded file's
    sha256 and `Tar.tree_hash` match `Artifacts.toml`). No more parity-pack work.
-3. ~~**Generic Lyapunov-candidate interface with the quadratic `V_P`**~~ (done 2026-09-30;
+3. ~~**Generic Lyapunov-candidate interface with the quadratic `V_P`**~~ (done 2026-09-30,
+   commit `cb2a777`; `V_P` stays scaffolding that validates the machinery, the main effort
+   moves to steps 4 to 6;
    see "ROA certificate pipeline" below). `V_P` certified at `1.71e-10` on IEEE-39 with every
    gate; `ROACheck` passes. Open inside this step, none blocking step 4:
    - speed: the coordinate-by-coordinate centered hull takes about 25 s per level (171
@@ -84,9 +86,10 @@ discussed with the user before they are implemented.
      branch's uniqueness box `X` and is evaluated on `eq.V cap V`, and `verified_min_eig`
      failed on 1 x 1 matrices;
    - ~~README status~~ (done); full suite with the final default: see the loose ends;
-   - after committing: regenerate `outputs/roa/IEEE39Bus_PF/certificate_quadratic.json` and
-     `roa_check.json` from the clean commit (`scripts/certify_roa.jl`), so the record names its
-     exact source (`porthos_src_modified = false`).
+   - ~~clean record~~ (done): `outputs/roa/IEEE39Bus_PF/certificate_quadratic.json` and
+     `roa_check.json` regenerated from commit `cb2a777` (`porthos_src_modified = false`):
+     level `1.714e-10`, decay bound `-3.44e-3`, 83 clauses, 21 excluded states with ranges and
+     drift bounds, ROACheck passed. `outputs/` is not in git; rerun the script to reproduce.
 4. **Nonlinear port-power residual audit** (the missing P10 audit): for each component,
    reconstruct independently its supply (port power), internal storage derivative,
    dissipation and the network cancellation, and check `grad H' f = supply - dissipation`
