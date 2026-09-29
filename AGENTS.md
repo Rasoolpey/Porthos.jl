@@ -1,10 +1,11 @@
 # Working rules for agents in Porthos.jl
 
-Porthos.jl is the all-Julia successor of PHPS. Nothing is implemented yet; your job is to
-build it.
+Porthos.jl is the all-Julia successor of PHPS. Your job is to build it, phase by phase.
 
 **Read first:**
 
+- [TODO.md](TODO.md): where the work stands, what needs the user, and the next steps.
+  Update it at the end of every session.
 - [docs/ROADMAP.md](docs/ROADMAP.md): the plan. Phases P0 to P12 each end with a parity gate;
   Part II follows. Work through the phases in order. "Order of work" at the start of Part I
   says how P2 to P7 are sequenced.

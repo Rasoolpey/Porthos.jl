@@ -1,0 +1,63 @@
+{
+ "description": "PHPS base all-SG CCT series at Bus 26: 50..300 ms in 50 ms steps, 30 s recovery between. Mirrors collect_base39.py --series.",
+ "system": "system_phtrue.json",
+ "solver": {
+  "method": "ida",
+  "dt": 0.0005,
+  "duration": 181.0,
+  "log_dt": 0.005
+ },
+ "events": [
+  {
+   "type": "BusFault",
+   "bus": 26,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 1.0,
+   "t_duration": 0.05
+  },
+  {
+   "type": "BusFault",
+   "bus": 26,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 31.0,
+   "t_duration": 0.1
+  },
+  {
+   "type": "BusFault",
+   "bus": 26,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 61.0,
+   "t_duration": 0.15
+  },
+  {
+   "type": "BusFault",
+   "bus": 26,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 91.0,
+   "t_duration": 0.2
+  },
+  {
+   "type": "BusFault",
+   "bus": 26,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 121.0,
+   "t_duration": 0.25
+  },
+  {
+   "type": "BusFault",
+   "bus": 26,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 151.0,
+   "t_duration": 0.3
+  }
+ ],
+ "output": {
+  "directory": "outputs/IEEE39Bus_PF_base_cct_bus26"
+ }
+}

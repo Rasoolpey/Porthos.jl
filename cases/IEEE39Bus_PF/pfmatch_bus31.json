@@ -1,0 +1,42 @@
+{
+ "description": "PHPS matched to PF 2.3 Bus 31 Stable: 210 ms, bolted",
+ "system": "system_phtrue.json",
+ "solver": {
+  "method": "ida",
+  "dt": 0.0005,
+  "duration": 6.0
+ },
+ "events": [
+  {
+   "type": "BusFault",
+   "bus": 31,
+   "r": 1e-06,
+   "x": 1e-06,
+   "t_start": 1.0,
+   "t_duration": 0.21
+  }
+ ],
+ "output": {
+  "directory": "outputs/IEEE39Bus_PFMATCH_bus31"
+ },
+ "plots": [
+  {
+   "title": "Rotor Speeds",
+   "y_label": "omega [pu]",
+   "signals": [
+    {
+     "pattern": "GENROU*omega"
+    }
+   ]
+  },
+  {
+   "title": "Terminal Voltages",
+   "y_label": "V [pu]",
+   "signals": [
+    {
+     "pattern": "Vterm_Bus*"
+    }
+   ]
+  }
+ ]
+}

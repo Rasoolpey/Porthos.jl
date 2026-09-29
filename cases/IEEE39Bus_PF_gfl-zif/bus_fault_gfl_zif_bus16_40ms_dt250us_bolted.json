@@ -1,0 +1,23 @@
+{
+  "description": "[gfl-zif] PHPS pf_frame=1 mirror of PF gfl -- 3ph Bus 16, 40 ms clearing, matched 0.25 ms step, fault impedance pushed to r=0 / x=1e-6 to match PF's BOLTED EvtShc (R_f = X_f = 0).  The r=x=1e-4 canonical case leaves a 5.8e-3 pu residual voltage at the faulted bus that PF does not have (TODO G.6 item 1).  Converters carry the uk interface reactor as a pH state.",
+  "system": "system_gfl_zif.json",
+  "solver": {
+    "method": "bdf1",
+    "dt": 0.00025,
+    "log_dt": 0.001,
+    "duration": 6.0
+  },
+  "events": [
+    {
+      "type": "BusFault",
+      "bus": 16,
+      "r": 0.0,
+      "x": 1e-06,
+      "t_start": 1.0,
+      "t_duration": 0.04
+    }
+  ],
+  "output": {
+    "directory": "phps/outputs/IEEE39Bus_PF_gfl_zif_bus16_40ms_dt250us_bolted"
+  }
+}

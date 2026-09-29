@@ -3,9 +3,10 @@
 **Port-Hamiltonian Operation and Stability.** A power system simulator and stability toolbox,
 written entirely in Julia, where the same model code runs both the simulation and the proofs.
 
-> **Status: pre-alpha, design stage (2026-09-29).** None of this is implemented yet. This
-> README describes the design, and the code examples show the planned API. Progress is
-> tracked phase by phase in [docs/ROADMAP.md](docs/ROADMAP.md).
+> **Status: pre-alpha (2026-09-29).** Phases P0 to P3 are implemented: case and scenario
+> loaders, the parity pack, the Y-bus and the power flow, which match PHPS. Everything from
+> P4 on is still design, and the usage examples below show the planned API. The plan is in
+> [docs/ROADMAP.md](docs/ROADMAP.md) and the current state in [TODO.md](TODO.md).
 
 ---
 

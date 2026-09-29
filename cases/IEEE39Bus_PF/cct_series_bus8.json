@@ -1,0 +1,111 @@
+{
+ "description": "PHPS base all-SG CCT series at Bus 8: 150..700 ms in 50 ms steps, 30 s recovery between. Mirrors collect_base39.py --series.",
+ "system": "system_phtrue.json",
+ "solver": {
+  "method": "ida",
+  "dt": 0.0005,
+  "duration": 361.0,
+  "log_dt": 0.005
+ },
+ "events": [
+  {
+   "type": "BusFault",
+   "bus": 8,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 1.0,
+   "t_duration": 0.15
+  },
+  {
+   "type": "BusFault",
+   "bus": 8,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 31.0,
+   "t_duration": 0.2
+  },
+  {
+   "type": "BusFault",
+   "bus": 8,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 61.0,
+   "t_duration": 0.25
+  },
+  {
+   "type": "BusFault",
+   "bus": 8,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 91.0,
+   "t_duration": 0.3
+  },
+  {
+   "type": "BusFault",
+   "bus": 8,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 121.0,
+   "t_duration": 0.35
+  },
+  {
+   "type": "BusFault",
+   "bus": 8,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 151.0,
+   "t_duration": 0.4
+  },
+  {
+   "type": "BusFault",
+   "bus": 8,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 181.0,
+   "t_duration": 0.45
+  },
+  {
+   "type": "BusFault",
+   "bus": 8,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 211.0,
+   "t_duration": 0.5
+  },
+  {
+   "type": "BusFault",
+   "bus": 8,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 241.0,
+   "t_duration": 0.55
+  },
+  {
+   "type": "BusFault",
+   "bus": 8,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 271.0,
+   "t_duration": 0.6
+  },
+  {
+   "type": "BusFault",
+   "bus": 8,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 301.0,
+   "t_duration": 0.65
+  },
+  {
+   "type": "BusFault",
+   "bus": 8,
+   "r": 0.0001,
+   "x": 0.0001,
+   "t_start": 331.0,
+   "t_duration": 0.7
+  }
+ ],
+ "output": {
+  "directory": "outputs/IEEE39Bus_PF_base_cct_bus8"
+ }
+}

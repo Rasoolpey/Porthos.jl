@@ -1,0 +1,888 @@
+{
+ "schema_version": "2.1-reservoir-corrected",
+ "power_convention": "positive_into_component",
+ "system_base": "100 MVA unless a component conversion is explicitly declared",
+ "contracts": {
+  "GENROU_PHTRUE": {
+   "status": "M1 rotor_field_pass_terminal_network_open",
+   "storage": "physical kinetic H*omega^2, shifted kinetic H*(omega-1)^2, and non-diagonal magnetic circuit storage",
+   "domain": "omega>0; standard reactance ordering",
+   "domain_clauses": [
+    {
+     "id": "omega_positive",
+     "text": "omega>0",
+     "check": "state_bounds",
+     "state": "omega",
+     "lower": "0"
+    },
+    {
+     "id": "reactance_ordering",
+     "text": "standard reactance ordering",
+     "check": "parameter_conditions",
+     "conditions": [
+      "xd > xd_prime",
+      "xd_prime > xd_double_prime",
+      "xd_double_prime > xl",
+      "xq > xq_prime",
+      "xq_prime > xq_double_prime",
+      "xq_double_prime > xl"
+     ]
+    }
+   ],
+   "ports": [
+    {
+     "name": "mechanical",
+     "runtime_signal": "Tm",
+     "semantics": "turbine mechanical power into machine",
+     "power_into_component": "Tm",
+     "derived_effort": "shaft torque=Tm/omega",
+     "derived_flow": "shaft speed=omega",
+     "symbolic_input": "get_symbolic_phs input T_m/tau_m is the SHAFT TORQUE tau_m = Tm/omega, g[omega,tau_m] = 1/(2H); port power tau_m*(omega-1) against H*(omega-1)^2 (model review E2, option b)"
+    },
+    {
+     "name": "field",
+     "runtime_signal": "Efd,i_fd",
+     "semantics": "field effort and metric-collocated field flow",
+     "power_into_component": "Efd*i_fd",
+     "qualification": "hardware field-current base not independently validated"
+    },
+    {
+     "name": "network_terminal",
+     "runtime_signal": "Vd,Vq,Id,Iq",
+     "semantics": "Id,Iq are positive out of generator into network",
+     "power_into_component": "-(Vd*Id+Vq*Iq)",
+     "qualification": "requires M2 internal-E-double-prime/subtransient-network storage closure"
+    }
+   ]
+  },
+  "GENSAL_PHTRUE": {
+   "status": "M1_reduced_rotor_field_pass_terminal_network_open",
+   "storage": "physical shifted kinetic H*(omega-1)^2, non-diagonal d-axis transient/damper magnetic storage, and reduced single-damper q-axis magnetic storage",
+   "domain": "omega>0; xd>xd_prime>xd_double_prime>xl and xq>xq_double_prime",
+   "domain_clauses": [
+    {
+     "id": "omega_positive",
+     "text": "omega>0",
+     "check": "state_bounds",
+     "state": "omega",
+     "lower": "0"
+    },
+    {
+     "id": "reactance_ordering",
+     "text": "xd>xd_prime>xd_double_prime>xl and xq>xq_double_prime",
+     "check": "parameter_conditions",
+     "conditions": [
+      "xd > xd_prime",
+      "xd_prime > xd_double_prime",
+      "xd_double_prime > xl",
+      "xq > xq_double_prime"
+     ]
+    }
+   ],
+   "ports": [
+    {
+     "name": "mechanical",
+     "runtime_signal": "Tm",
+     "semantics": "turbine mechanical power into machine",
+     "power_into_component": "Tm",
+     "derived_effort": "shaft torque=Tm/omega",
+     "derived_flow": "shaft speed=omega",
+     "symbolic_input": "get_symbolic_phs input T_m/tau_m is the SHAFT TORQUE tau_m = Tm/omega, g[omega,tau_m] = 1/(2H); port power tau_m*(omega-1) against H*(omega-1)^2 (model review E2, option b)",
+     "speed_convention": "stator/Norton EMF omega*psi'' (PF i_speedVar = 1, TechRef eq. 73-74), as GENROU_PHTRUE; swing (Tm/omega - Te - D(omega-1))/(2H) with the flux product Te = psi''d*iq - psi''q*id = P_ag/omega, i.e. the torque balance ((Tm - P_ag)/omega - D(omega-1))/(2H) (model review A3, form V4; TODO_PHTRUE_MODEL_REVIEW.md sections 2 and 4a)"
+    },
+    {
+     "name": "field",
+     "runtime_signal": "Efd,i_fd",
+     "semantics": "field effort and metric-collocated d-axis field flow",
+     "power_into_component": "Efd*i_fd",
+     "qualification": "hardware field-current base not independently validated"
+    },
+    {
+     "name": "network_terminal",
+     "runtime_signal": "Vd,Vq,Id,Iq",
+     "semantics": "Id,Iq are positive out of generator into network",
+     "power_into_component": "-(Vd*Id+Vq*Iq)",
+     "qualification": "requires M2 subtransient-network storage closure"
+    }
+   ]
+  },
+  "IEEEG1_PHTRUE": {
+   "status": "reservoir_balance_pass_signal_layer_unproved",
+   "storage": "steam source reservoir only",
+   "domain": "tank pressure>0 and declared limiter mode",
+   "domain_clauses": [
+    {
+     "id": "reservoir_conjugate_positive",
+     "text": "tank pressure>0",
+     "check": "nonbinding_accounting_state",
+     "state": "x_steam",
+     "reason": "x_steam is a one-way accounting reservoir: it is excluded from the certificate quotient and feeds no retained state, so its conjugate (pressure/head) domain cannot constrain the certified plant dynamics; the audit verifies the exclusion and the absence of the symbol from every binding row"
+    },
+    {
+     "id": "single_smooth_mode",
+     "text": "declared limiter mode",
+     "check": "single_smooth_mode"
+    }
+   ],
+   "ports": [
+    {
+     "name": "upstream_steam",
+     "runtime_signal": "PM_REF",
+     "power_into_component": "PM_REF"
+    },
+    {
+     "name": "mechanical_output",
+     "runtime_signal": "Tm",
+     "semantics": "Tm is turbine mechanical power, not torque",
+     "power_into_component": "-Tm"
+    },
+    {
+     "name": "speed_measurement",
+     "runtime_signal": "omega",
+     "semantics": "control measurement; not independently power conjugate"
+    }
+   ],
+   "reservoir": {
+    "state": "x_steam",
+    "constitutive_energy": "H_r = x_steam^2 / (2 C_TANK)",
+    "conjugate": "p_tank = x_steam / C_TANK  (accounting pressure, not a steam pressure)",
+    "delivered_power": "Tm  (turbine mechanical power, not torque)",
+    "upstream_law": "constant-power inflow PM_REF: dx_r = (PM_REF - Tm)/p_r, so p_r*dx_r = PM_REF - Tm exactly (neutral; corrected 2026-09-25)",
+    "losses": null,
+    "capacity": {
+     "value": 1000.0,
+     "units": "pu.s",
+     "parameter_source": "modelling choice, not equipment data",
+     "identifiable_from_terminal_data": false,
+     "identifiability_note": "one-way coupled: every C gives the same projected trajectory, measured 2.7e-9 over C in [1e2,1e6]; C must come from equipment data or a separate source model",
+     "symbol": "C_TANK"
+    },
+    "guard": "p_tank >= 1e-6 (clamped in the generated code)",
+    "represented_elsewhere": "turbine stage lags are controller states, not stored energy",
+    "physical_analogue_not_claimed": "a steam header stores a nonlinear thermodynamic availability in mass, pressure and enthalpy with boiler and valve-flow dynamics; the quadratic form here shares none of that constitutive law and its capacity is not a header volume",
+    "initial_state": "x_r(0) = p* C (p* = P_STAR or F_STAR, default 1)"
+   }
+  },
+  "IEEET1_PHTRUE": {
+   "status": "reservoir_balance_pass_signal_layer_unproved",
+   "storage": "field source reservoir only",
+   "domain": "field pressure>0 and declared limiter mode",
+   "domain_clauses": [
+    {
+     "id": "reservoir_conjugate_positive",
+     "text": "field pressure>0",
+     "check": "nonbinding_accounting_state",
+     "state": "x_field",
+     "reason": "x_field is a one-way accounting reservoir: it is excluded from the certificate quotient and feeds no retained state, so its conjugate (pressure/head) domain cannot constrain the certified plant dynamics; the audit verifies the exclusion and the absence of the symbol from every binding row"
+    },
+    {
+     "id": "single_smooth_mode",
+     "text": "declared limiter mode",
+     "check": "single_smooth_mode"
+    }
+   ],
+   "ports": [
+    {
+     "name": "upstream_field_supply",
+     "runtime_signal": "PFD_REF",
+     "power_into_component": "PFD_REF"
+    },
+    {
+     "name": "field_output",
+     "runtime_signal": "Efd,i_fd",
+     "power_into_component": "-Efd*i_fd"
+    },
+    {
+     "name": "voltage_control_signals",
+     "runtime_signal": "Vterm,Vref,upss",
+     "semantics": "signal ports; no physical power supply rate declared"
+    }
+   ],
+   "reservoir": {
+    "state": "x_field",
+    "constitutive_energy": "H_r = x_field^2 / (2 C_FIELD)",
+    "conjugate": "p_field = x_field / C_FIELD  (accounting pressure, not a field current)",
+    "delivered_power": "Efd * i_fd",
+    "upstream_law": "constant-power inflow PFD_REF: dx_r = (PFD_REF - Efd*i_fd)/p_r, so p_r*dx_r = PFD_REF - Efd*i_fd exactly (neutral; corrected 2026-09-25)",
+    "losses": null,
+    "capacity": {
+     "value": 1000.0,
+     "units": "pu.s",
+     "parameter_source": "modelling choice, not equipment data",
+     "identifiable_from_terminal_data": false,
+     "identifiability_note": "one-way coupled: every C gives the same projected trajectory, measured 2.7e-9 over C in [1e2,1e6]; C must come from equipment data or a separate source model",
+     "symbol": "C_FIELD"
+    },
+    "guard": "p_field >= 1e-6 (clamped in the generated code)",
+    "represented_elsewhere": "the machine's own magnetic energy is in the GENROU rotor states; this account is the UPSTREAM supply only and must not be replaced by a field-inductance storage without a derivation, or the field energy would be counted twice",
+    "physical_analogue_not_claimed": "a physical field supply would carry rectifier/exciter losses, a supply topology, and a hardware current base; i_fd here is the flow collocated with the GENROU metric and its conversion to a hardware base is NOT yet validated, so C_FIELD cannot presently be calibrated physically",
+    "initial_state": "x_r(0) = p* C (p* = P_STAR or F_STAR, default 1)"
+   }
+  },
+  "STAB1_PHS": {
+   "status": "signal_system_only",
+   "storage": "identity-metric diagnostic excluded from physical assembled storage",
+   "domain": "declared limiter mode",
+   "domain_clauses": [
+    {
+     "id": "single_smooth_mode",
+     "text": "declared limiter mode",
+     "check": "single_smooth_mode"
+    }
+   ],
+   "ports": [
+    {
+     "name": "stabilizer_signal",
+     "runtime_signal": "omega,Vss",
+     "semantics": "frequency-to-voltage signal map; not a physical power port"
+    }
+   ]
+  },
+  "ComplexLoad": {
+   "status": "algebraic_load_requires_mode_specific_network_audit",
+   "storage": "none",
+   "domain": "voltage above the declared correction clip",
+   "domain_clauses": [
+    {
+     "id": "voltage_above_correction_clip",
+     "text": "voltage above the declared correction clip",
+     "check": "bus_voltage_squared_above",
+     "threshold": 1e-08,
+     "note": "the correction law divides by max(Vd^2+Vq^2, 1e-8); above the clip it is the unclipped law"
+    }
+   ],
+   "ports": [
+    {
+     "name": "network_terminal",
+     "runtime_signal": "Vd,Vq,Id,Iq",
+     "semantics": "base constant-impedance load is in Ybus; outputs are correction injections",
+     "power_into_component": "load power represented by Ybus plus negative correction injection"
+    }
+   ]
+  },
+  "GFL_PHTRUE": {
+   "status": "terminal_account_pass_controller_unproved",
+   "storage": "one-way dc/source account only",
+   "domain": "declared PLL, voltage-gate, current-limit, and anti-windup modes",
+   "domain_clauses": [
+    {
+     "id": "single_smooth_mode",
+     "text": "declared PLL, voltage-gate, current-limit, and anti-windup modes",
+     "check": "single_smooth_mode"
+    }
+   ],
+   "ports": [
+    {
+     "name": "upstream_dc_source",
+     "runtime_signal": "p_ref",
+     "power_into_component": "p_ref"
+    },
+    {
+     "name": "network_terminal",
+     "runtime_signal": "Vd,Vq,Id,Iq",
+     "semantics": "Id,Iq positive out of converter",
+     "power_into_component": "-(Vd*Id+Vq*Iq)"
+    }
+   ],
+   "reservoir": {
+    "state": "x_tank",
+    "constitutive_energy": "H_r = x_tank^2 / (2 C_TANK)",
+    "conjugate": "x_tank / C_TANK",
+    "delivered_power": "v_d*i_dgs + v_q*i_qgs  (full dq terminal power)",
+    "upstream_law": "constant-power inflow p_ref: dx_r = (p_ref - p_term)/p_r, so p_r*dx_r = p_ref - p_term exactly (neutral; corrected 2026-09-25)",
+    "losses": null,
+    "capacity": {
+     "value": 1000.0,
+     "units": "pu.s",
+     "parameter_source": "modelling choice, not equipment data",
+     "identifiable_from_terminal_data": false,
+     "identifiability_note": "one-way coupled: every C gives the same projected trajectory, measured 2.7e-9 over C in [1e2,1e6]; C must come from equipment data or a separate source model",
+     "symbol": "C_TANK"
+    },
+    "guard": "x_tank/C_TANK >= 1e-6 (clamped in the generated code)",
+    "represented_elsewhere": "PLL, current and interface lags are signal states without storage",
+    "physical_analogue_not_claimed": "a physical dc source would carry converter loss, filter energy change and a state-of-charge or dc-link voltage law; none is present",
+    "initial_state": "x_r(0) = p* C (p* = P_STAR or F_STAR, default 1)"
+   }
+  },
+  "GFM_VSM_PHTRUE": {
+   "status": "swing_filter_pass_full_converter_unproved",
+   "storage": "swing, damping-filter, and one-way source-account storage",
+   "domain": "declared virtual-impedance and current-limit mode",
+   "domain_clauses": [
+    {
+     "id": "single_smooth_mode",
+     "text": "declared virtual-impedance and current-limit mode",
+     "check": "single_smooth_mode"
+    }
+   ],
+   "ports": [
+    {
+     "name": "upstream_dc_source",
+     "runtime_signal": "p_set",
+     "power_into_component": "p_set"
+    },
+    {
+     "name": "network_terminal",
+     "runtime_signal": "Vd,Vq,Id,Iq",
+     "semantics": "Id,Iq positive out of converter",
+     "power_into_component": "-(Vd*Id+Vq*Iq)"
+    }
+   ],
+   "reservoir": {
+    "state": "x_tank",
+    "constitutive_energy": "H_r = x_tank^2 / (2 C_TANK)",
+    "conjugate": "x_tank / C_TANK",
+    "delivered_power": "terminal active power",
+    "upstream_law": "constant-power inflow p_set: dx_r = (p_set - p_mea)/p_r, so p_r*dx_r = p_set - p_mea exactly (neutral; corrected 2026-09-25)",
+    "losses": null,
+    "capacity": {
+     "value": 1000.0,
+     "case_values": "1000 is the class default; the IEEE39 GFM/GFL cases scale it to 10 x Sn of the replaced machine (3000 / 7000 / 8000 pu.s at buses 34 / 31,36,37 / 32,35)",
+     "units": "pu.s",
+     "parameter_source": "modelling choice, not equipment data",
+     "identifiable_from_terminal_data": false,
+     "identifiability_note": "one-way coupled: every C gives the same projected trajectory, measured 2.7e-9 over C in [1e2,1e6]; C must come from equipment data or a separate source model",
+     "symbol": "C_TANK"
+    },
+    "guard": "x_tank/C_TANK >= 1e-6 (clamped in the generated code)",
+    "represented_elsewhere": "swing and damping-filter storage are separate declared storages of this component and are NOT part of the source account",
+    "physical_analogue_not_claimed": "as GFL_PHTRUE",
+    "initial_state": "x_r(0) = p* C (p* = P_STAR or F_STAR, default 1)"
+   }
+  },
+  "GFM_DROOP_PHTRUE": {
+   "status": "swing_equivalent_pass_full_converter_unproved",
+   "storage": "droop-equivalent swing and one-way source-account storage",
+   "domain": "declared virtual-impedance and current-limit mode",
+   "domain_clauses": [
+    {
+     "id": "single_smooth_mode",
+     "text": "declared virtual-impedance and current-limit mode",
+     "check": "single_smooth_mode"
+    }
+   ],
+   "ports": [
+    {
+     "name": "upstream_dc_source",
+     "runtime_signal": "p_set",
+     "power_into_component": "p_set"
+    },
+    {
+     "name": "network_terminal",
+     "runtime_signal": "Vd,Vq,Id,Iq",
+     "semantics": "Id,Iq positive out of converter",
+     "power_into_component": "-(Vd*Id+Vq*Iq)"
+    }
+   ],
+   "reservoir": {
+    "state": "x_tank",
+    "constitutive_energy": "H_r = x_tank^2 / (2 C_TANK)",
+    "conjugate": "x_tank / C_TANK",
+    "delivered_power": "terminal active power",
+    "upstream_law": "constant-power inflow p_set: dx_r = (p_set - p_mea)/p_r, so p_r*dx_r = p_set - p_mea exactly (neutral; corrected 2026-09-25)",
+    "losses": null,
+    "capacity": {
+     "value": 1000.0,
+     "case_values": "1000 is the class default; the IEEE39 GFM/GFL cases scale it to 10 x Sn of the replaced machine (3000 / 7000 / 8000 pu.s at buses 34 / 31,36,37 / 32,35)",
+     "units": "pu.s",
+     "parameter_source": "modelling choice, not equipment data",
+     "identifiable_from_terminal_data": false,
+     "identifiability_note": "one-way coupled: every C gives the same projected trajectory, measured 2.7e-9 over C in [1e2,1e6]; C must come from equipment data or a separate source model",
+     "symbol": "C_TANK"
+    },
+    "guard": "x_tank/C_TANK >= 1e-6 (clamped in the generated code)",
+    "represented_elsewhere": "droop-equivalent swing storage is a separate declared storage",
+    "physical_analogue_not_claimed": "as GFL_PHTRUE",
+    "initial_state": "x_r(0) = p* C (p* = P_STAR or F_STAR, default 1)"
+   }
+  },
+  "GFM_VOC_PHTRUE": {
+   "status": "orbital_transformed_port_pass_electrical_port_open",
+   "storage": "hamiltonian() returns |v|^2/(2 eta) + x_tank^2/(2 C_TANK): the quadratic electrical-port storage of the oscillator plus the one-way terminal-power source tank; the orbital storage (|v|^2-V_nom^2)^2/(4 eta xi) of orbital_storage() is a SEPARATE certificate and is not part of hamiltonian()",
+   "domain": "nonzero terminal voltage and declared virtual-impedance/current-limit mode",
+   "domain_clauses": [
+    {
+     "id": "terminal_voltage_nonzero",
+     "text": "nonzero terminal voltage",
+     "check": "bus_voltage_squared_above",
+     "threshold": 0.0
+    },
+    {
+     "id": "single_smooth_mode",
+     "text": "declared virtual-impedance/current-limit mode",
+     "check": "single_smooth_mode"
+    }
+   ],
+   "ports": [
+    {
+     "name": "upstream_dc_source",
+     "runtime_signal": "p_set",
+     "power_into_component": "p_set"
+    },
+    {
+     "name": "hopf_source_candidate",
+     "runtime_signal": "chi,v_alpha,v_beta",
+     "power_into_component": "max(chi,0)*(v_alpha^2+v_beta^2)/eta",
+     "qualification": "formal M5 port; must not be double-counted with the dc account"
+    },
+    {
+     "name": "network_terminal",
+     "runtime_signal": "Vd,Vq,Id,Iq",
+     "semantics": "Id,Iq positive out of converter",
+     "power_into_component": "-(Vd*Id+Vq*Iq)"
+    },
+    {
+     "name": "synchronisation_error",
+     "runtime_signal": "i_star-i,y_orb",
+     "power_into_component": "y_orb_transpose*(i_star-i)",
+     "qualification": "transformed orbital port, not ordinary terminal electrical power"
+    }
+   ],
+   "reservoir": {
+    "state": "x_tank",
+    "constitutive_energy": "H_r = x_tank^2 / (2 C_TANK)",
+    "conjugate": "x_tank / C_TANK",
+    "delivered_power": "p_mea (terminal active power measurement)",
+    "upstream_law": "constant-power inflow p_set: dx_r = (p_set - p_mea)/p_r, so p_r*dx_r = p_set - p_mea exactly (neutral; corrected 2026-09-25)",
+    "losses": null,
+    "capacity": {
+     "value": 1000.0,
+     "case_values": "1000 is the class default; the IEEE39 GFM/GFL cases scale it to 10 x Sn of the replaced machine (3000 / 7000 / 8000 pu.s at buses 34 / 31,36,37 / 32,35)",
+     "units": "pu.s",
+     "parameter_source": "modelling choice, not equipment data",
+     "identifiable_from_terminal_data": false,
+     "identifiability_note": "one-way coupled: every C gives the same projected trajectory, measured 2.7e-9 over C in [1e2,1e6]; C must come from equipment data or a separate source model",
+     "symbol": "C_TANK"
+    },
+    "guard": "x_tank/C_TANK >= 1e-6 (clamped in the generated code)",
+    "represented_elsewhere": "THREE DISTINCT OBJECTS must not be merged: (i) the orbital storage (|v|^2-V_nom^2)^2/(4 eta xi), which measures distance from the desired oscillation and is a CONTROLLER synchronisation quantity; (ii) this one-way terminal-power source account; (iii) the hopf_source_candidate port of M5. None of the three is the physical dc-source energy",
+    "physical_analogue_not_claimed": "a physical VOC source would be E_dc = C_dc V_dc^2 / 2 with dE_dc/dt = P_primary - P_ac - P_converter_loss - dE_filter/dt; the oscillator's active radial term must be paid for through the converter, so an account drained only by terminal active power is an approximate source budget unless converter losses and filter storage change are included or explicitly neglected -- here they are explicitly neglected",
+    "reservoir_mismatch": "dx_tank = (p_set - p_mea)/p_r with p_r = x_tank/C_TANK (corrected law, 2026-09-25): the reservoir books exactly the power p_mea delivered at the terminal; any Hopf-source power max(chi,0)|v|^2/eta is a formal internal port and is not booked by this reservoir",
+    "initial_state": "x_r(0) = p* C (p* = P_STAR or F_STAR, default 1)"
+   }
+  },
+  "IEEEG3_PHTRUE": {
+   "status": "reservoir_balance_pass_signal_layer_unproved",
+   "storage": "headrace (upper reservoir) source only",
+   "domain": "net head>0, gate in [PMIN,PMAX], declared limiter mode; a11*Tw>0 and a23!=0",
+   "domain_clauses": [
+    {
+     "id": "reservoir_conjugate_positive",
+     "text": "net head>0",
+     "check": "nonbinding_accounting_state",
+     "state": "x_water",
+     "reason": "x_water is a one-way accounting reservoir: it is excluded from the certificate quotient and feeds no retained state, so its conjugate (pressure/head) domain cannot constrain the certified plant dynamics; the audit verifies the exclusion and the absence of the symbol from every binding row"
+    },
+    {
+     "id": "gate_range",
+     "text": "gate in [PMIN,PMAX]",
+     "check": "state_bounds",
+     "state": "at",
+     "lower": "PMIN*R_base",
+     "upper": "PMAX*R_base",
+     "note": "the gate state at is in turbine-power units, PMIN/PMAX in machine base scaled by R_base"
+    },
+    {
+     "id": "single_smooth_mode",
+     "text": "declared limiter mode",
+     "check": "single_smooth_mode"
+    },
+    {
+     "id": "waterhammer_parameters",
+     "text": "a11*Tw>0 and a23!=0",
+     "check": "parameter_conditions",
+     "conditions": [
+      "a11*Tw > 0",
+      "a23 != 0"
+     ]
+    }
+   ],
+   "ports": [
+    {
+     "name": "upstream_headrace",
+     "runtime_signal": "PM_REF",
+     "power_into_component": "PM_REF"
+    },
+    {
+     "name": "mechanical_output",
+     "runtime_signal": "Tm",
+     "semantics": "Tm is turbine mechanical power (PF pt), not torque",
+     "power_into_component": "-Tm"
+    },
+    {
+     "name": "speed_measurement",
+     "runtime_signal": "omega",
+     "semantics": "control measurement; not independently power conjugate"
+    },
+    {
+     "name": "power_reference",
+     "runtime_signal": "Pref,u_agc",
+     "semantics": "dispatch signal; not power conjugate, carries no physical power"
+    }
+   ],
+   "reservoir": {
+    "state": "x_water",
+    "constitutive_energy": "H_r = x_water^2 / (2 C_TANK)",
+    "conjugate": "h_head = x_water / C_TANK  (accounting head, not a hydraulic head)",
+    "delivered_power": "Tm  (turbine mechanical power, not torque)",
+    "upstream_law": "constant-power inflow PM_REF: dx_r = (PM_REF - Tm)/p_r, so p_r*dx_r = PM_REF - Tm exactly (neutral; corrected 2026-09-25)",
+    "losses": null,
+    "capacity": {
+     "value": 1000.0,
+     "units": "pu.s",
+     "parameter_source": "modelling choice, not equipment data",
+     "identifiable_from_terminal_data": false,
+     "identifiability_note": "one-way coupled: x_water does not feed back into xp/xr/at/x1 or Tm, so every C gives the same projected trajectory; C must come from equipment data or a separate source model",
+     "symbol": "C_TANK"
+    },
+    "guard": "h_head >= 1e-6 (clamped in the generated code)",
+    "represented_elsewhere": "the waterhammer lag x1 (Ta = a11*Tw) is the linearised water-column INERTIA, a controller state here, not stored potential energy; the dashpot state xr is a control reset, not storage",
+    "physical_analogue_not_claimed": "a real headrace stores gravitational potential energy rho*g*V*z with a free surface, penstock friction, surge-tank oscillation and a non-quadratic volume-head relation; the quadratic form here shares none of that constitutive law and its capacity is not a pond volume",
+    "initial_state": "x_r(0) = p* C (p* = P_STAR or F_STAR, default 1)"
+   }
+  },
+  "IEEEX1_PHTRUE": {
+   "status": "reservoir_balance_pass_signal_layer_unproved",
+   "storage": "field supply reservoir only",
+   "domain": "tank pressure>0 and declared limiter mode",
+   "domain_clauses": [
+    {
+     "id": "reservoir_conjugate_positive",
+     "text": "tank pressure>0",
+     "check": "nonbinding_accounting_state",
+     "state": "x_field",
+     "reason": "x_field is a one-way accounting reservoir: it is excluded from the certificate quotient and feeds no retained state, so its conjugate (pressure/head) domain cannot constrain the certified plant dynamics; the audit verifies the exclusion and the absence of the symbol from every binding row"
+    },
+    {
+     "id": "single_smooth_mode",
+     "text": "declared limiter mode",
+     "check": "single_smooth_mode"
+    }
+   ],
+   "ports": [
+    {
+     "name": "upstream_field_supply",
+     "runtime_signal": "PFD_REF,p_field/F_STAR",
+     "power_into_component": "p_field*PFD_REF/F_STAR"
+    },
+    {
+     "name": "field_output",
+     "runtime_signal": "Efd,i_fd",
+     "semantics": "Efd is an effort; the conjugate flow is the machine field current i_fd, read from GenRouPHTrue. IEEEX1 applies speed compensation, so Efd = Vp*omega.",
+     "power_into_component": "-Efd*i_fd",
+     "qualification": "hardware field-current base not independently validated"
+    },
+    {
+     "name": "terminal_measurement",
+     "runtime_signal": "Vterm",
+     "semantics": "control measurement; not independently power conjugate"
+    }
+   ],
+   "reservoir": {
+    "state": "x_field",
+    "constitutive_energy": "H_r = x_field^2 / (2 C_FIELD)",
+    "conjugate": "p_field = x_field / C_FIELD  (accounting pressure, not a supply voltage)",
+    "delivered_power": "Efd*i_fd  (field-winding power at the declared boundary)",
+    "upstream_law": "constant inflow PFD_REF / F_STAR (no exciter-set, station-service or rectifier dynamics modelled)",
+    "losses": null,
+    "capacity": {
+     "value": 1000.0,
+     "units": "pu.s",
+     "parameter_source": "modelling choice, not equipment data",
+     "identifiable_from_terminal_data": false,
+     "identifiability_note": "one-way coupled: x_field does not feed back into the AVR states or Efd, so every C gives the same projected trajectory; C must come from equipment data or a separate source model",
+     "symbol": "C_FIELD"
+    },
+    "guard": "p_field >= 1e-6 (clamped in the generated code)",
+    "represented_elsewhere": "AVR lead-lag, regulator and rate-feedback stages are controller states, not stored energy; states are ['Vm','LLx','Vr','Vp','Vf','x_field']",
+    "physical_analogue_not_claimed": "a real excitation supply stores energy in rotating-exciter field inductance, DC-bus capacitance or the AC source behind the bridge, each with its own constitutive law, saturation and losses; the quadratic form here shares none of that and its capacity is not a capacitance or an inductance. IEEEX1 is a rotating DC exciter; the account sits at its omitted supply, not at the exciter armature."
+   }
+  },
+  "EXDC2_PHTRUE": {
+   "status": "reservoir_balance_pass_signal_layer_unproved",
+   "storage": "field supply reservoir only",
+   "domain": "tank pressure>0 and declared limiter mode",
+   "domain_clauses": [
+    {
+     "id": "reservoir_conjugate_positive",
+     "text": "tank pressure>0",
+     "check": "nonbinding_accounting_state",
+     "state": "x_field",
+     "reason": "x_field is a one-way accounting reservoir: it is excluded from the certificate quotient and feeds no retained state, so its conjugate (pressure/head) domain cannot constrain the certified plant dynamics; the audit verifies the exclusion and the absence of the symbol from every binding row"
+    },
+    {
+     "id": "single_smooth_mode",
+     "text": "declared limiter mode",
+     "check": "single_smooth_mode"
+    }
+   ],
+   "ports": [
+    {
+     "name": "upstream_field_supply",
+     "runtime_signal": "PFD_REF,p_field/F_STAR",
+     "power_into_component": "p_field*PFD_REF/F_STAR"
+    },
+    {
+     "name": "field_output",
+     "runtime_signal": "Efd,i_fd",
+     "semantics": "Efd is an effort; the conjugate flow is the machine field current i_fd, read from GenRouPHTrue. EXDC2 carries Efd as its own state x[2], so no reconstruction is needed.",
+     "power_into_component": "-Efd*i_fd",
+     "qualification": "hardware field-current base not independently validated"
+    },
+    {
+     "name": "terminal_measurement",
+     "runtime_signal": "Vterm",
+     "semantics": "control measurement; not independently power conjugate"
+    }
+   ],
+   "reservoir": {
+    "state": "x_field",
+    "constitutive_energy": "H_r = x_field^2 / (2 C_FIELD)",
+    "conjugate": "p_field = x_field / C_FIELD  (accounting pressure, not a supply voltage)",
+    "delivered_power": "Efd*i_fd  (field-winding power at the declared boundary)",
+    "upstream_law": "constant inflow PFD_REF / F_STAR (no exciter-set, station-service or rectifier dynamics modelled)",
+    "losses": null,
+    "capacity": {
+     "value": 1000.0,
+     "units": "pu.s",
+     "parameter_source": "modelling choice, not equipment data",
+     "identifiable_from_terminal_data": false,
+     "identifiability_note": "one-way coupled: x_field does not feed back into the AVR states or Efd, so every C gives the same projected trajectory; C must come from equipment data or a separate source model",
+     "symbol": "C_FIELD"
+    },
+    "guard": "p_field >= 1e-6 (clamped in the generated code)",
+    "represented_elsewhere": "AVR lead-lag, regulator and rate-feedback stages are controller states, not stored energy; states are ['Vm','Vr','Efd','Xf','x_field']",
+    "physical_analogue_not_claimed": "a real excitation supply stores energy in rotating-exciter field inductance, DC-bus capacitance or the AC source behind the bridge, each with its own constitutive law, saturation and losses; the quadratic form here shares none of that and its capacity is not a capacitance or an inductance. EXDC2 is a rotating DC exciter with saturation; the account is upstream of that saturation."
+   }
+  },
+  "EXST1_PHTRUE": {
+   "status": "reservoir_balance_pass_signal_layer_unproved",
+   "storage": "field supply reservoir only",
+   "domain": "tank pressure>0 and declared limiter mode",
+   "domain_clauses": [
+    {
+     "id": "reservoir_conjugate_positive",
+     "text": "tank pressure>0",
+     "check": "nonbinding_accounting_state",
+     "state": "x_field",
+     "reason": "x_field is a one-way accounting reservoir: it is excluded from the certificate quotient and feeds no retained state, so its conjugate (pressure/head) domain cannot constrain the certified plant dynamics; the audit verifies the exclusion and the absence of the symbol from every binding row"
+    },
+    {
+     "id": "single_smooth_mode",
+     "text": "declared limiter mode",
+     "check": "single_smooth_mode"
+    }
+   ],
+   "ports": [
+    {
+     "name": "upstream_field_supply",
+     "runtime_signal": "PFD_REF,p_field/F_STAR",
+     "power_into_component": "p_field*PFD_REF/F_STAR"
+    },
+    {
+     "name": "field_output",
+     "runtime_signal": "Efd,i_fd",
+     "semantics": "Efd is an effort; the conjugate flow is the machine field current i_fd, read from GenRouPHTrue. EXST1 is bus-fed, so the delivered Efd is the regulator output after the rectifier ceiling VRMAX-KC*Xad; the tank drains by that LIMITED value.",
+     "power_into_component": "-Efd*i_fd",
+     "qualification": "hardware field-current base not independently validated"
+    },
+    {
+     "name": "terminal_measurement",
+     "runtime_signal": "Vterm",
+     "semantics": "control measurement; not independently power conjugate"
+    }
+   ],
+   "reservoir": {
+    "state": "x_field",
+    "constitutive_energy": "H_r = x_field^2 / (2 C_FIELD)",
+    "conjugate": "p_field = x_field / C_FIELD  (accounting pressure, not a supply voltage)",
+    "delivered_power": "Efd*i_fd  (field-winding power at the declared boundary)",
+    "upstream_law": "constant inflow PFD_REF / F_STAR (no exciter-set, station-service or rectifier dynamics modelled)",
+    "losses": null,
+    "capacity": {
+     "value": 1000.0,
+     "units": "pu.s",
+     "parameter_source": "modelling choice, not equipment data",
+     "identifiable_from_terminal_data": false,
+     "identifiability_note": "one-way coupled: x_field does not feed back into the AVR states or Efd, so every C gives the same projected trajectory; C must come from equipment data or a separate source model",
+     "symbol": "C_FIELD"
+    },
+    "guard": "p_field >= 1e-6 (clamped in the generated code)",
+    "represented_elsewhere": "AVR lead-lag, regulator and rate-feedback stages are controller states, not stored energy; states are ['Vm','LLx','Vr','Vf','x_field']",
+    "physical_analogue_not_claimed": "a real excitation supply stores energy in rotating-exciter field inductance, DC-bus capacitance or the AC source behind the bridge, each with its own constitutive law, saturation and losses; the quadratic form here shares none of that and its capacity is not a capacitance or an inductance. On a static exciter the ceiling collapses with terminal voltage, which is when the supply is worked hardest; that coupling is in the signal layer, NOT in the reservoir, which stays an unmodulated constant-inflow account."
+   }
+  },
+  "ESST3A_PHTRUE": {
+   "status": "reservoir_balance_pass_signal_layer_unproved",
+   "storage": "field supply reservoir only",
+   "domain": "tank pressure>0 and declared limiter mode",
+   "domain_clauses": [
+    {
+     "id": "reservoir_conjugate_positive",
+     "text": "tank pressure>0",
+     "check": "nonbinding_accounting_state",
+     "state": "x_field",
+     "reason": "x_field is a one-way accounting reservoir: it is excluded from the certificate quotient and feeds no retained state, so its conjugate (pressure/head) domain cannot constrain the certified plant dynamics; the audit verifies the exclusion and the absence of the symbol from every binding row"
+    },
+    {
+     "id": "single_smooth_mode",
+     "text": "declared limiter mode",
+     "check": "single_smooth_mode"
+    }
+   ],
+   "ports": [
+    {
+     "name": "upstream_field_supply",
+     "runtime_signal": "PFD_REF,p_field/F_STAR",
+     "power_into_component": "p_field*PFD_REF/F_STAR"
+    },
+    {
+     "name": "field_output",
+     "runtime_signal": "Efd,i_fd",
+     "semantics": "Efd is an effort; the conjugate flow is the machine field current i_fd, read from GenRouPHTrue. ESST3A delivers Efd = clamp(VB*VM, Efd_min, Efd_max); the tank drains by that clamped product.",
+     "power_into_component": "-Efd*i_fd",
+     "qualification": "hardware field-current base not independently validated"
+    },
+    {
+     "name": "terminal_measurement",
+     "runtime_signal": "Vterm",
+     "semantics": "control measurement; not independently power conjugate"
+    }
+   ],
+   "reservoir": {
+    "state": "x_field",
+    "constitutive_energy": "H_r = x_field^2 / (2 C_FIELD)",
+    "conjugate": "p_field = x_field / C_FIELD  (accounting pressure, not a supply voltage)",
+    "delivered_power": "Efd*i_fd  (field-winding power at the declared boundary)",
+    "upstream_law": "constant inflow PFD_REF / F_STAR (no exciter-set, station-service or rectifier dynamics modelled)",
+    "losses": null,
+    "capacity": {
+     "value": 1000.0,
+     "units": "pu.s",
+     "parameter_source": "modelling choice, not equipment data",
+     "identifiable_from_terminal_data": false,
+     "identifiability_note": "one-way coupled: x_field does not feed back into the AVR states or Efd, so every C gives the same projected trajectory; C must come from equipment data or a separate source model",
+     "symbol": "C_FIELD"
+    },
+    "guard": "p_field >= 1e-6 (clamped in the generated code)",
+    "represented_elsewhere": "AVR lead-lag, regulator and rate-feedback stages are controller states, not stored energy; states are ['Vm','LLx','Vr','VM','VB','x_field']",
+    "physical_analogue_not_claimed": "a real excitation supply stores energy in rotating-exciter field inductance, DC-bus capacitance or the AC source behind the bridge, each with its own constitutive law, saturation and losses; the quadratic form here shares none of that and its capacity is not a capacitance or an inductance. ESST3A's VB already models the compound potential source, whose strength depends on machine terminal voltage and current; the appended reservoir sits UPSTREAM of the bridge and does NOT represent VB."
+   }
+  },
+  "TGOV1_PHTRUE": {
+   "status": "reservoir_balance_pass_signal_layer_unproved",
+   "storage": "steam source reservoir only",
+   "domain": "p_tank>0 and declared limiter mode",
+   "domain_clauses": [
+    {
+     "id": "reservoir_conjugate_positive",
+     "text": "p_tank>0",
+     "check": "nonbinding_accounting_state",
+     "state": "x_steam",
+     "reason": "x_steam is a one-way accounting reservoir: it is excluded from the certificate quotient and feeds no retained state, so its conjugate (pressure/head) domain cannot constrain the certified plant dynamics; the audit verifies the exclusion and the absence of the symbol from every binding row"
+    },
+    {
+     "id": "single_smooth_mode",
+     "text": "declared limiter mode",
+     "check": "single_smooth_mode"
+    }
+   ],
+   "ports": [
+    {
+     "name": "upstream_steam",
+     "runtime_signal": "PM_REF,p_tank/P_STAR",
+     "power_into_component": "p_tank*PM_REF/P_STAR"
+    },
+    {
+     "name": "mechanical_output",
+     "runtime_signal": "Tm",
+     "semantics": "Tm is turbine mechanical power, not torque",
+     "power_into_component": "-Tm"
+    },
+    {
+     "name": "speed_measurement",
+     "runtime_signal": "omega",
+     "semantics": "control measurement; not independently power conjugate"
+    }
+   ],
+   "reservoir": {
+    "state": "x_steam",
+    "constitutive_energy": "H_r = x_steam^2 / (2 C_TANK)",
+    "conjugate": "p_tank = x_steam / C_TANK  (accounting pressure, not a physical one)",
+    "delivered_power": "Tm = clamp(x2 + (T2/T3)(x1-x2) + xi, VMIN, VMAX)  (turbine mechanical power, not torque)",
+    "upstream_law": "constant inflow PM_REF / P_STAR (no boiler, penstock or catchment dynamics modelled)",
+    "losses": null,
+    "capacity": {
+     "value": 1000.0,
+     "units": "pu.s",
+     "parameter_source": "modelling choice, not equipment data",
+     "identifiable_from_terminal_data": false,
+     "identifiability_note": "one-way coupled: x_steam does not feed back into the governor states or Tm, so every C gives the same projected trajectory",
+     "symbol": "C_TANK"
+    },
+    "guard": "p_tank >= 1e-6 (clamped in the generated code)",
+    "represented_elsewhere": "valve position x1, turbine/reheat stage x2 and the integral trim xi are controller states, not stored energy",
+    "physical_analogue_not_claimed": "a steam header stores a nonlinear thermodynamic availability in mass, pressure and enthalpy with boiler and valve-flow dynamics; the quadratic form here shares none of that constitutive law and its capacity is not a header volume"
+   }
+  },
+  "HYGOV_PHTRUE": {
+   "status": "reservoir_balance_pass_signal_layer_unproved",
+   "storage": "water source reservoir only",
+   "domain": "h_pond>0 and declared limiter mode",
+   "domain_clauses": [
+    {
+     "id": "reservoir_conjugate_positive",
+     "text": "h_pond>0",
+     "check": "nonbinding_accounting_state",
+     "state": "x_water",
+     "reason": "x_water is a one-way accounting reservoir: it is excluded from the certificate quotient and feeds no retained state, so its conjugate (pressure/head) domain cannot constrain the certified plant dynamics; the audit verifies the exclusion and the absence of the symbol from every binding row"
+    },
+    {
+     "id": "single_smooth_mode",
+     "text": "declared limiter mode",
+     "check": "single_smooth_mode"
+    }
+   ],
+   "ports": [
+    {
+     "name": "upstream_water",
+     "runtime_signal": "PM_REF,h_pond/P_STAR",
+     "power_into_component": "h_pond*PM_REF/P_STAR"
+    },
+    {
+     "name": "mechanical_output",
+     "runtime_signal": "Tm",
+     "semantics": "Tm is turbine mechanical power, not torque",
+     "power_into_component": "-Tm"
+    },
+    {
+     "name": "speed_measurement",
+     "runtime_signal": "omega",
+     "semantics": "control measurement; not independently power conjugate"
+    }
+   ],
+   "reservoir": {
+    "state": "x_water",
+    "constitutive_energy": "H_r = x_water^2 / (2 C_TANK)",
+    "conjugate": "h_pond = x_water / C_TANK  (accounting head, not a physical one)",
+    "delivered_power": "Pmech = At*h*(q-qNL) - Dturb*n*gate  (turbine mechanical power, not torque)",
+    "upstream_law": "constant inflow PM_REF / P_STAR (no boiler, penstock or catchment dynamics modelled)",
+    "losses": null,
+    "capacity": {
+     "value": 1000.0,
+     "units": "pu.s",
+     "parameter_source": "modelling choice, not equipment data",
+     "identifiable_from_terminal_data": false,
+     "identifiability_note": "one-way coupled: x_water does not feed back into the governor states or Tm, so every C gives the same projected trajectory",
+     "symbol": "C_TANK"
+    },
+    "guard": "h_pond >= 1e-6 (clamped in the generated code)",
+    "represented_elsewhere": "the droop-reset state z and gate position are controller states; the flow state q with h=(q/gate)^2 is the PENSTOCK water-column inertia, a hydraulic state, NOT the stored potential energy accounted here",
+    "physical_analogue_not_claimed": "a real headrace stores gravitational potential energy rho*g*V*z with a free surface, penstock friction, surge-tank oscillation and a non-quadratic volume-head relation; the quadratic form here shares none of that constitutive law and its capacity is not a pond volume"
+   }
+  }
+ },
+ "reservoir_contract_note": "What is universal across equipment is the boundary balance dE_r = P_in - P_out - P_loss. The state, constitutive law, capacity, losses, limits and upstream dynamics are equipment-specific. Every account implemented here has losses=null, i.e. it realises the LOSSLESS special case dE_r = P_in - P_out. Capacities are 1000 pu.s for the governor and exciter accounts and a class default of 1000 pu.s for the converter accounts, which the IEEE39 converter cases scale with rating (10 x Sn of the replaced machine: 3000 / 7000 / 8000 pu.s); these are accounting conventions, and reservoir magnitudes must NOT be ranked across component types on that basis.",
+ "reservoir_correction_note": "2026-09-25: every reservoir uses the constant-POWER inflow law dx_r = (P_ref - P_draw)/p_r, p_r = max(x_r/C, 1e-6), x_r(0) = p* C. Then p_r dx_r = P_ref - P_draw exactly, the reservoir is neutral (d(dx_r)/dx_r = 0 at equilibrium) and H_r(t) = H_r(0) - D_r(t) with the reservoir work D_r = int (P_draw - P_ref) dt, independent of C. The original constant-VOLUME law dx_r = P_ref/p* - P_draw/p_r had the unstable eigenvalue P_ref/(C p*^2); the converters used the stiff law dx = P_ref - P_draw with x(0) = 0, whose energy did not drain by exactly P_draw. One-way coupling is unchanged, so every plant trajectory is unchanged."
+}

@@ -12,7 +12,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: ['1.10', '1']
+        # Pinned to the Julia minor version the committed Manifest was resolved with.
+        version: ['1.12']
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
@@ -21,4 +22,6 @@ jobs:
           version: ${{ matrix.version }}
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
+      # The test suite installs the lazy `parity_pack` artifact from Artifacts.toml
+      # (GitHub release parity-pack-v1); the parity gates fail if it cannot be fetched.
       - uses: julia-actions/julia-runtest@v1

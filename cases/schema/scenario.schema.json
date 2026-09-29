@@ -1,0 +1,93 @@
+{
+ "$schema": "http://json-schema.org/draft-07/schema#",
+ "$id": "https://github.com/Rasoolpey/Porthos.jl/cases/schema/scenario.schema.json",
+ "title": "Porthos / PHPS scenario",
+ "description": "Scenario file: which system to run, solver settings, events, output and plots. Same format as PHPS (phps/cases).",
+ "type": "object",
+ "required": ["system", "solver"],
+ "properties": {
+  "description": {"type": "string"},
+  "system": {"type": "string", "minLength": 1},
+  "solver": {
+   "type": "object",
+   "required": ["method", "dt", "duration"],
+   "properties": {
+    "method": {"enum": ["ida", "bdf1", "rk4"]},
+    "dt": {"type": "number", "exclusiveMinimum": 0},
+    "duration": {"type": "number", "exclusiveMinimum": 0},
+    "log_dt": {"type": "number", "exclusiveMinimum": 0},
+    "rtol": {"type": "number", "exclusiveMinimum": 0},
+    "atol": {"type": "number", "exclusiveMinimum": 0}
+   }
+  },
+  "events": {
+   "type": ["array", "null"],
+   "items": {
+    "type": "object",
+    "required": ["type"],
+    "oneOf": [
+     {"$ref": "#/definitions/BusFault"},
+     {"$ref": "#/definitions/LineFault"},
+     {"$ref": "#/definitions/Toggler"}
+    ]
+   }
+  },
+  "output": {
+   "type": "object",
+   "properties": {"directory": {"type": "string"}}
+  },
+  "plots": {
+   "type": ["array", "null"],
+   "items": {
+    "type": "object",
+    "properties": {
+     "title": {"type": "string"},
+     "y_label": {"type": "string"},
+     "signals": {"type": "array"}
+    }
+   }
+  }
+ },
+ "definitions": {
+  "window": {
+   "properties": {
+    "t_start": {"type": "number", "minimum": 0},
+    "t_duration": {"type": "number", "minimum": 0},
+    "t_end": {"type": "number", "minimum": 0}
+   }
+  },
+  "BusFault": {
+   "allOf": [
+    {"$ref": "#/definitions/window"},
+    {
+     "required": ["type", "bus", "t_start"],
+     "properties": {
+      "type": {"const": "BusFault"},
+      "bus": {"type": "integer"},
+      "r": {"type": "number", "minimum": 0},
+      "x": {"type": "number"}
+     }
+    }
+   ]
+  },
+  "LineFault": {
+   "allOf": [
+    {"$ref": "#/definitions/window"},
+    {
+     "required": ["type", "line_idx", "t_start"],
+     "properties": {
+      "type": {"const": "LineFault"},
+      "line_idx": {"type": ["string", "integer"]},
+      "distance": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
+      "r": {"type": "number", "minimum": 0},
+      "x": {"type": "number"}
+     }
+    }
+   ]
+  },
+  "Toggler": {
+   "required": ["type"],
+   "properties": {"type": {"const": "Toggler"}}
+  }
+ }
+}

@@ -26,3 +26,7 @@ __pycache__/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Parity pack build outputs (the pack itself is an artifact, never committed)
+/parity/pack*/
+/parity/dist/

@@ -1,0 +1,13 @@
+{
+  "description": "[gfl-zif] PHPS pf_frame=1 gfl no-event gate -- matched 0.25 ms step, 6 s (GFL audit contract)  Converters carry the uk interface reactor as a pH state.",
+  "system": "system_gfl_zif.json",
+  "solver": {
+    "method": "bdf1",
+    "dt": 0.00025,
+    "log_dt": 0.001,
+    "duration": 6.0
+  },
+  "output": {
+    "directory": "phps/outputs/IEEE39Bus_PF_gfl_zif_nofault_dt250us"
+  }
+}

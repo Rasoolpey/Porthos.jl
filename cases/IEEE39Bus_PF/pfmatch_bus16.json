@@ -1,0 +1,42 @@
+{
+ "description": "PHPS matched to PF 2.1 Bus 16 Stable: 180 ms, Xf=0.001 pu",
+ "system": "system_phtrue.json",
+ "solver": {
+  "method": "ida",
+  "dt": 0.0005,
+  "duration": 11.0
+ },
+ "events": [
+  {
+   "type": "BusFault",
+   "bus": 16,
+   "r": 0.0,
+   "x": 0.001,
+   "t_start": 1.0,
+   "t_duration": 0.18
+  }
+ ],
+ "output": {
+  "directory": "outputs/IEEE39Bus_PFMATCH_bus16"
+ },
+ "plots": [
+  {
+   "title": "Rotor Speeds",
+   "y_label": "omega [pu]",
+   "signals": [
+    {
+     "pattern": "GENROU*omega"
+    }
+   ]
+  },
+  {
+   "title": "Terminal Voltages",
+   "y_label": "V [pu]",
+   "signals": [
+    {
+     "pattern": "Vterm_Bus*"
+    }
+   ]
+  }
+ ]
+}

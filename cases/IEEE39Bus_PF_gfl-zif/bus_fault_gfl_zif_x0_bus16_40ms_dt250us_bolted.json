@@ -1,0 +1,23 @@
+{
+  "description": "REGRESSION x_if=0: must reproduce the GFL_PHTRUE 40 ms bolted run.",
+  "system": "system_gfl_zif_x0.json",
+  "solver": {
+    "method": "bdf1",
+    "dt": 0.00025,
+    "log_dt": 0.001,
+    "duration": 6.0
+  },
+  "events": [
+    {
+      "type": "BusFault",
+      "bus": 16,
+      "r": 0.0,
+      "x": 1e-06,
+      "t_start": 1.0,
+      "t_duration": 0.04
+    }
+  ],
+  "output": {
+    "directory": "phps/outputs/IEEE39Bus_PF_gfl_zif_x0_bus16_40ms_dt250us_bolted"
+  }
+}
