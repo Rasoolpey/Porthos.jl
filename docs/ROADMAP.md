@@ -65,7 +65,7 @@ Small inputs go into git; large data goes into content-hashed artifacts bound in
 |---|---|---|---|
 | Case and scenario JSON | `phps/cases/**` (system files `system*.json`, scenario files with `solver`/`events`/`output`/`plots`) | inputs, unchanged format | at P1, into `cases/` (git) |
 | Port contracts | `phps/src/components/model_port_contracts.json` (schema `2.1-reservoir-corrected`, with `domain_clauses`) | component contracts and the fail-closed domain audit | at P1, into `contracts/` (git) |
-| PowerFactory references | `study/pf_reference/**` (about 81 MB) | external validation targets | at P7, as an artifact |
+| PowerFactory references | `study/pf_reference/**` (about 81 MB) | external validation targets | not brought in (P7 decision, 2026-09-29: parity with PHPS stands in); study records come in with their P9 study |
 | Certificate records | `study/pf_reference/certificates/*.json` | ROA parity targets | at P0, inside the parity pack |
 | Model code | `phps/src/` (`components/`, `ybus.py`, `powerflow.py`, `initialization.py`, `runner.py`, `roa/`, `certification.py`) | what each phase ports | read in place |
 | Julia interval code | `phps/julia/` (`ROAIntervalJets.jl`, `SecondOrderJets.jl`) | starting point for `src/roa/` | ported at P11 |
@@ -337,8 +337,13 @@ For each type, implement `rhs!`, `outputs!`, `injection`, `initialize`, `hamilto
     sliding mode from PHPS's BDF1 record in the pack: the first run of at least 10
     consecutive steps whose Newton does not converge on the same equation (a limiter
     crossing costs 1 to 3 such steps; the chattering pilot valve costs 239, from 1.324 s).
-  - at production tolerances, against the PowerFactory references, with the same metrics and
-    thresholds the current validation uses.
+  - no PowerFactory comparison (decided 2026-09-29, replacing "at production tolerances,
+    against the PowerFactory references"): the user validated PHPS against PowerFactory, so
+    parity with PHPS carries that validation over. PowerFactory 24 is not available on the
+    build machine to re-record the traces, and PHPS_Opt no longer holds them.
+- `LineFault` and `rk4` (decided 2026-09-29): not supported for now. The only scenario with
+  either (`IEEE39Bus/mid_line_fault.json`) points at a system file that does not exist, so
+  PHPS cannot run it; Porthos loads it and refuses to simulate it with a clear error.
 
 ### P8. Reports
 - The scenario `plots` blocks, figure style, and a summary per run (CairoMakie).

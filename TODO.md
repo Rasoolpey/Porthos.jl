@@ -6,9 +6,8 @@ end of every session.
 Last session: 2026-09-29 (second session that day). P0 to P3 are done. P4 is done for the
 synchronous-machine set (GENROU, GENSAL, IEEET1, IEEEG1, IEEEG3, COMPLEXLOAD), P5 and P6 for
 the base case, and P7's PHPS gates pass on the base case against parity pack v4
-(published). Open in P7: the PowerFactory comparison (waits for the user to re-record
-the PF traces) and the LineFault / rk4 decision (see "Needs the user"). The converters
-come after the P5 to P7 slice. The test suite passes (1460 tests, about 2 minutes: the P7 gate runs the full
+(published). P7 is closed on the PHPS gates (PowerFactory item dropped, LineFault / rk4
+left unsupported; see "Decided"). The converters come after the P5 to P7 slice. The test suite passes (1460 tests, about 2 minutes: the P7 gate runs the full
 6 s BDF1); the only tests marked broken are the P5 and P6 converter cases.
 
 **Committed and pushed** on `master` (2026-09-29): everything up to and including this
@@ -26,7 +25,7 @@ session's P6, P7, precompile workload and pack v4 binding.
 | P4 items 4 and 5 (converters) | after P7 | per the roadmap order of work |
 | P5 assembly | done for base | Against PHPS's **compiled C++** `dae_residual` (the function IDA and BDF1 solve): f and g at the equilibrium bit-identical, at 50 random states fault off and on within 1.3e-14 (gate 1e-12; 1228 of 28100 values differ in the last bits, from sin/cos of different math libraries). Layout, wiring, Y-bus, loads, COI and faults identical. Structural Jacobian pattern checked against ForwardDiff. gfl, vsm, droop, voc: `@test_skip` until their models are ported. |
 | P6 initialisation | done for base | Residual at Porthos's equilibrium 2.7e-13 (gate 1e-12). Distance to PHPS's equilibrium 9.0e-10, within the allowance 7.2e-7 = `||J^+||` (67) times the residual at PHPS's point (1.07e-8, PHPS's own residual). All initialised parameters (Efd0, Tm0, Vref, Pref, PFD_REF, PM_REF, V0, Vini) within 8.4e-10 of PHPS's. The first pass reproduces PHPS's pre-refinement state within 1e-12. Converter cases pending. |
-| P7 simulation | PHPS gates pass, base case | Pack v4, `test/parity/p7_sim.jl`, all from PHPS's initialised state and parameters. **BDF1** vs PHPS's compiled BDF1: max 1.7e-11 over the whole 6 s (gate 1e-9), the same 268 non-converged steps, the first at the same time. **IDA at 1e-10** vs PHPS IDA at 1e-10: max 1.2e-7 before the first sliding mode (gate 1e-6), 4.1e-3 after it over 15 s (reported). The sliding-mode start comes from the pack: the first run of at least 10 consecutive non-converged BDF1 steps on one equation (IEEEG3_11.xp, 239 steps from 1.324 s; limiter crossings cost 1 to 3). **CSV**: header identical, the 20 complete rows (states and observables) within 2.5e-10 (gate 1e-9, chosen by the agent: the trajectory gate). **IDA production**: 1.7e-2 from PHPS's (reported; step sequences differ). Not done: PowerFactory comparison and the LineFault / rk4 decision (need the user). |
+| P7 simulation | done for base | Pack v4, `test/parity/p7_sim.jl`, all from PHPS's initialised state and parameters. **BDF1** vs PHPS's compiled BDF1: max 1.7e-11 over the whole 6 s (gate 1e-9), the same 268 non-converged steps, the first at the same time. **IDA at 1e-10** vs PHPS IDA at 1e-10: max 1.2e-7 before the first sliding mode (gate 1e-6), 4.1e-3 after it over 15 s (reported). The sliding-mode start comes from the pack: the first run of at least 10 consecutive non-converged BDF1 steps on one equation (IEEEG3_11.xp, 239 steps from 1.324 s; limiter crossings cost 1 to 3). **CSV**: header identical, the 20 complete rows (states and observables) within 2.5e-10 (gate 1e-9, chosen by the agent: the trajectory gate). **IDA production**: 1.7e-2 from PHPS's (reported; step sequences differ). PowerFactory item dropped and LineFault / rk4 unsupported (user decisions). |
 | P8 to P12 | not started | |
 
 ## Needs the user
@@ -42,28 +41,6 @@ session's P6, P7, precompile workload and pack v4 binding.
    60 Hz (all parity cases) and the correct one at 50 Hz.
 3. The P6 check of the initialised parameters uses an absolute tolerance of 1e-8 chosen by
    the agent (the roadmap gives none); the actual differences are below 8.4e-10.
-4. **Re-record the PowerFactory traces (P7, third gate item).** Decided: see "Decided". The raw PF
-   RMS traces the PHPS comparison used (`study/pf_reference/rms/BASE_fault_bus16_{150,170}ms.csv`)
-   are not in PHPS_Opt; the run records point at an old checkout
-   (`Documents\PHPS\PHPS_Opt`) that no longer exists. The recorded PHPS-vs-PF numbers
-   (`model_review/pf_compare/pf_compare_bus16_v4_x1e-5.json`) are for PHPS at `ad59566`;
-   between it and `ba11ea1` the PHTRUE models (all but GENROU), `dae_runner`,
-   `dae_compiler` and the case file changed. PHPS's thresholds there are relative (a new
-   kernel no worse than the old one against PF: RMS <= 1.05 x old + floors of 1e-5 pu speed,
-   0.05 deg angle, 1e-3 pu P; G10 strictly no worse), not absolute. The re-recording script
-   (`pf/api/PF_Test_Modules/collect_base39_isolated.py --bus 16 --clear-ms 150 170`) writes
-   into PHPS_Opt and drives PowerFactory, so it is the user's to run. It writes
-   `study/pf_reference/rms/BASE_fault_bus16_{150,170}ms.csv`.
-5. **LineFault and rk4** (asked 2026-09-29; the user asked which system it is): the only
-   scenario with either is PHPS's `IEEE39Bus/mid_line_fault.json` (IEEE-39, LineFault on
-   Line_1, bus 1 to bus 2, at d = 0.5, method rk4). Its system file `IEEE39Bus/system.json`
-   has never existed in PHPS_Opt's history (the scenario already pointed at it in the first
-   commit, e086716); the folder's only system, `system_phs.json`, is an older IEEE-39 of
-   retired models (GENROU_PHS, IEEEX1_PHS, TGOV1_PHS, IEEEST_PHS). Not Kundur: PHPS has no
-   two-area case. PHPS cannot run the scenario. Porthos loads it and refuses to simulate it
-   with a clear error. Options: leave unsupported (agent's recommendation) or implement
-   LineFault on the DAE path by splitting the line (no PHPS reference; checked only against
-   a hand-split case with a BusFault).
 
 ## Decided (2026-09-29)
 
@@ -71,16 +48,16 @@ session's P6, P7, precompile workload and pack v4 binding.
   (sha256 `d055ebf55875f72d6f5c1e6632b9be5f98c7a549e68cd2dd7c681733f36399c0`, tree hash
   `2d5a8c246703fe42d90791076935381a385f6b98`, both checked on the downloaded file), made
   like v3 (REST API, stored git credential).
-- **PowerFactory comparison (P7)**: the user re-records the PF traces with
-  `collect_base39_isolated.py --bus 16 --clear-ms 150 170`; the agent then brings the CSVs
-  in as an artifact (not git), and the gate is relative, as PHPS's own validation: per
-  machine, Porthos (IDA at production tolerances) against PF no worse than PHPS at
-  `ba11ea1` against PF (the pack's `ida_prod` run, which logs every dotted CSV column, so
-  `delta`, `omega`, `Pe` are there), RMS <= 1.05 x PHPS's + floors (1e-5 pu speed, 0.05 deg
-  angle relative to G 01, 1e-3 pu P; G 10 strictly no worse), with PHPS's metrics from
-  `study/src/model_review_pf_compare.py` (angles unwrapped, offset removed before the fault;
-  PF on its own time grid, interpolated).
-
+- **P7 is closed on the PHPS gates** (user, 2026-09-29): the PowerFactory item is dropped.
+  The user validated PHPS against PowerFactory, so parity with PHPS carries it over;
+  PowerFactory 24 is not on this machine, and the raw PF traces are gone from PHPS_Opt.
+  LineFault and rk4 stay unsupported for now (their only scenario,
+  `IEEE39Bus/mid_line_fault.json`, points at a system file that has never existed; it is not
+  the most severe case anyway). `docs/ROADMAP.md` P7 updated.
+- **Control-related work waits for a method discussion** (user, 2026-09-29): the three
+  energy-reservoir models (governors and GFL) and the control tools (PH audits, KYP /
+  passivity, ROA certificates, design) need careful thought about the method first. The
+  software tools come first.
 - **Parity pack v3 is published**: GitHub release `parity-pack-v3` on Rasoolpey/Porthos.jl
   with `parity_pack-v3.tar.gz` (sha256
   `b2ceaed1c8b44ed95b1180fc33e2a771b5463f1d08b8c4c91729cb32e335398e`, tree hash
@@ -309,10 +286,42 @@ test/unit/, test/parity/p0..p7     unit tests and the P0 to P7 gates (common.jl:
 
 ## Next steps
 
-1. **PowerFactory comparison**: when the user has re-recorded the traces, bring the two
-   CSVs in as an artifact (with the run's JSON sidecar and the PHPS commit it was run
-   against), port the metrics of `model_review_pf_compare.py` to Julia, and add the relative
-   gate to `test/parity/p7_sim.jl` (see "Decided").
-2. **LineFault / rk4**: as the user decides ("Needs the user", item 5).
-3. Then the converters (P4 items 4 and 5) and P5 to P7 on the GFL, VSM, droop and VOC cases.
-4. Later: a faster BDF1 option (sparse AD Jacobian, sparse LU) next to the PHPS-exact one.
+Software tools first (user, 2026-09-29); the control-related items at the end wait for a
+method discussion with the user.
+
+1. **Grid-forming converters** (P4 item 5): `GFM_VSM_PHTRUE`, `GFM_DROOP_PHTRUE`,
+   `GFM_VOC_PHTRUE`, ported as PHPS has them at `ba11ea1`. Then P5 to P7 on the vsm, droop
+   and voc cases: pack v5 with their `components` samples and `sim` runs. **GFL waits**
+   (user, 2026-09-29): the GFL converter needs its own energy-reservoir model, like the
+   governors and exciters have, and those reservoir models have problems to fix; that is
+   control work for the method discussion (below). `GFL_PHTRUE` and `GFL_ZIF_PHTRUE` are
+   ported after it. With them: switch
+   `ybus_dae` to the components' `norton_admittance`, and check the stale-output order of
+   the output pass (see "Findings").
+2. **P8 reports** (PorthosMakieExt): the scenario `plots` blocks, PHPS's figure style
+   (`tools/figstyle.py`), a summary per run; gate: figures regenerate from records alone.
+   Also PHPS tools the roadmap does not list yet: `plot_results.py`, `plot_system_graph.py`,
+   `print_system_model.py`, `export_system_pdf.py` (add them to P8 if wanted).
+3. **P9 simulation studies**, each gated on a recorded anchor: CCT by bisection and fault
+   series (`tools/sweep_critical_clearing.py`, `study/src/cct_*`), frequency indices
+   (RoCoF, nadir: `tools/frequency_indices.py`, `mode_rocof_*`), voltage (static Q-V, snap,
+   LVRT recovery: `tools/voltage_*.py`, `qv_*`). Then the energy-function studies
+   (transient energy CCT, analytic and UEP walls, SOS wall). Needs threaded scenario sweeps
+   (roadmap 2.6).
+4. **Performance and infrastructure**: `bench/` timing suite; threads for sweeps; a fast
+   BDF1 option (sparse AD Jacobian, sparse LU) next to the PHPS-exact one; sparse KCL for
+   larger networks; optionally FBDF / Rodas5P with a mass matrix; later events (line trip,
+   load step).
+5. **P12**: `python/porthos/` wrappers (juliacall) with the lint rule; Documenter pages;
+   the fresh-clone gate (one command reproduces the parity suite).
+
+Control-related, waiting for the method discussion (do not start alone):
+
+- the energy-reservoir models: a GFL reservoir built like the governors' and exciters'
+  (then GFL_PHTRUE and GFL_ZIF_PHTRUE are ported), and fixes to the governor and exciter
+  reservoirs' problems;
+- P10 PH audits (shifted storage, KYP / passivity with JuMP; Clarabel, "Needs the user" 1);
+- P11 ROA certificates (interval primitives for the limiters come with it);
+- the P9 reservoir, design, OPF and control-mode studies, and the energy-margin /
+  reservoir-work study;
+- Part II.
