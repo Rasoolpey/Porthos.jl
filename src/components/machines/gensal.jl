@@ -40,6 +40,7 @@ end
 const _GENSAL_STATES = ["delta", "omega", "E_q_prime", "psi_d", "psi_q_pp"]
 
 model_type(::GENSAL_PHTRUE) = "GENSAL_PHTRUE"
+component_role(::GENSAL_PHTRUE) = :generator
 state_names(::GENSAL_PHTRUE) = _GENSAL_STATES
 input_names(::GENSAL_PHTRUE) = _MACHINE_INPUTS
 output_names(::GENSAL_PHTRUE) = _MACHINE_OUTPUTS

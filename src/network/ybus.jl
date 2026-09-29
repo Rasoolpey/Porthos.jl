@@ -132,11 +132,16 @@ end
 _bus_v0(case::Case, bus::Int) =
     (i = findfirst(b -> b.idx == bus, case.buses); i === nothing ? 1.0 : case.buses[i].v0)
 
-function _stamp_loads!(s::_Stamps, net::Network, case::Case)
+# bus voltage magnitude used for the constant-impedance loads: the case v0, or an override
+# in network order (PHPS's simulation uses the solved power-flow voltages)
+_load_v0(case::Case, net::Network, bus::Int, v0) =
+    v0 === nothing ? _bus_v0(case, bus) : Float64(v0[net.index[bus]])
+
+function _stamp_loads!(s::_Stamps, net::Network, case::Case, v0 = nothing)
     for (bus, P, Q) in load_power_by_bus(case, net)
         (P == 0 && Q == 0) && continue
         i = net.index[bus]
-        V0 = _bus_v0(case, bus)
+        V0 = _load_v0(case, net, bus, v0)
         V02 = max(V0 * V0, 1e-12)
         # (P - 1j*Q) / V02, CPython: 1j*Q = complex(0*Q - 1*0, 0*0 + 1*Q)
         jQ = complex(0.0 * Q - 1.0 * 0.0, 0.0 * 0.0 + 1.0 * Q)
@@ -201,20 +206,21 @@ end
 Bus admittance matrix in the bus order of `net`:
 
 - `ybus(case)`: lines and shunts, the power-flow matrix (PHPS `build(include_loads=False)`);
-- `loads = true`: adds each PQ load as the constant impedance `(P - jQ)/v0^2`;
+- `loads = true`: adds each PQ load as the constant impedance `(P - jQ)/v0^2`, with `v0`
+  the case `Bus` voltages or the override `v0` (magnitudes in network order);
 - `norton`: generator Norton admittances to add (see [`norton_stamps`](@ref)).
 
 See [`ybus_dae`](@ref) for the matrix the DAE uses.
 """
 function ybus(case::Case; net::Network = Network(case),
               lines::AbstractVector{LineData} = case.lines, loads::Bool = false,
-              norton = ())
+              norton = (), v0 = nothing)
     s = _Stamps(nbus(net))
     for l in lines
         _stamp_line!(s, net, l)
     end
     _stamp_shunts!(s, net, case)
-    loads && _stamp_loads!(s, net, case)
+    loads && _stamp_loads!(s, net, case, v0)
     _stamp_norton!(s, net, norton)
     return sparse(s)
 end
@@ -231,11 +237,12 @@ ybus_pf(case::Case; kwargs...) = ybus(case; kwargs...)
     ybus_dae(case) -> SparseMatrixCSC{ComplexF64}
 
 The DAE network matrix of PHPS (`DiracCompiler.Y_full`): lines, shunts, constant-impedance
-PQ loads at the case `v0`, and the generator Norton admittances. No Kron reduction; every
-bus stays an algebraic variable.
+PQ loads, and the generator Norton admittances. No Kron reduction; every bus stays an
+algebraic variable. The loads use the case `v0` unless `v0` is given; the matrix PHPS
+simulates with uses the solved power-flow voltages (`v0 = solve_powerflow(case).V`).
 """
-ybus_dae(case::Case; net::Network = Network(case), lines = case.lines) =
-    ybus(case; net, lines, loads = true, norton = norton_stamps(case))
+ybus_dae(case::Case; net::Network = Network(case), lines = case.lines, v0 = nothing) =
+    ybus(case; net, lines, loads = true, norton = norton_stamps(case), v0)
 
 """
     LoadAdmittances
@@ -258,14 +265,16 @@ end
     load_admittances(case; net = Network(case)) -> LoadAdmittances
 
 Port of the load block of PHPS `_build_full_ybus` and the kpf/kqf fallback of
-`DiracCompiler.build`.
+`DiracCompiler.build`. `v0` overrides the bus voltages (network order) and `load_params`
+(component name => parameter dictionary) the COMPLEXLOAD parameters.
 """
-function load_admittances(case::Case; net::Network = Network(case))
+function load_admittances(case::Case; net::Network = Network(case), v0 = nothing,
+                          load_params = nothing)
     n = nbus(net)
     G, B, P, Q = zeros(n), zeros(n), zeros(n), zeros(n)
     for (bus, p, q) in load_power_by_bus(case, net)
         i = net.index[bus]
-        V0 = _bus_v0(case, bus)
+        V0 = _load_v0(case, net, bus, v0)
         V02 = max(V0 * V0, 1e-12)
         G[i] = p / V02
         B[i] = -q / V02
@@ -280,10 +289,14 @@ function load_admittances(case::Case; net::Network = Network(case))
         bus = Int(spec.params[:bus])
         haskey(net.index, bus) || continue
         i = net.index[bus]
-        kpf[i] = param(spec, :kpf, 0.0)
-        kqf[i] = param(spec, :kqf, 0.0)
-        P0, Q0 = param(spec, :P0, 0.0), param(spec, :Q0, 0.0)
-        V0 = param(spec, :V0, 1.0)
+        # the component's parameters: as in the case, or as initialisation left them
+        # (PHPS sets each load's V0 to its power-flow voltage before building the DAE)
+        pd = load_params === nothing ? nothing : get(load_params, spec.name, nothing)
+        pv(k, d) = pd !== nothing && haskey(pd, k) ? param_value(pd[k]) : param(spec, Symbol(k), d)
+        kpf[i] = pv("kpf", 0.0)
+        kqf[i] = pv("kqf", 0.0)
+        P0, Q0 = pv("P0", 0.0), pv("Q0", 0.0)
+        V0 = pv("V0", 1.0)
         V02 = max(V0 * V0, 1e-12)
         if P0 != 0.0 || Q0 != 0.0
             G[i] = P0 / V02

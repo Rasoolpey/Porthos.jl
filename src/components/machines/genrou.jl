@@ -45,6 +45,7 @@ const _MACHINE_OUTPUTS = ["Id", "Iq", "omega", "Pe", "Qe", "id_dq", "iq_dq", "It
                           "i_fd"]
 
 model_type(::GENROU_PHTRUE) = "GENROU_PHTRUE"
+component_role(::GENROU_PHTRUE) = :generator
 state_names(::GENROU_PHTRUE) = _GENROU_STATES
 input_names(::GENROU_PHTRUE) = _MACHINE_INPUTS
 output_names(::GENROU_PHTRUE) = _MACHINE_OUTPUTS

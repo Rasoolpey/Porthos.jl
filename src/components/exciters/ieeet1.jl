@@ -41,6 +41,7 @@ const _IEEET1_INPUTS = ["Vterm", "Vref", "upss", "i_fd"]
 const _IEEET1_OUTPUTS = ["Efd"]
 
 model_type(::IEEET1_PHTRUE) = "IEEET1_PHTRUE"
+component_role(::IEEET1_PHTRUE) = :exciter
 state_names(::IEEET1_PHTRUE) = _IEEET1_STATES
 input_names(::IEEET1_PHTRUE) = _IEEET1_INPUTS
 output_names(::IEEET1_PHTRUE) = _IEEET1_OUTPUTS

@@ -10,18 +10,16 @@
          default Julia is left alone).
       3. The Julia packages from Project.toml / Manifest.toml (Pkg.instantiate) and
          precompilation.
-      4. The parity pack (lazy artifact in Artifacts.toml). This fails harmlessly until the
-         GitHub release parity-pack-v1 exists; the step then only warns.
-      5. The Python venv for the parity-pack generator (parity/generate/.venv) with the
-         pinned parity/generate/requirements.txt. Only needed to regenerate the pack; skip
-         with -SkipPython.
+      4. The parity pack (lazy artifact in Artifacts.toml). This fails harmlessly until its
+         GitHub release (see Artifacts.toml) exists; the step then only warns.
+      5. The PHPS reference tooling, needed only to regenerate the parity pack (skip with
+         -SkipPython): the Python venv parity/generate/.venv with the pinned
+         parity/generate/requirements.txt, and MSYS2 UCRT64 with g++ and SUNDIALS at
+         C:\msys64 (where PHPS looks for them), which compile PHPS's C++ DAE kernels.
       6. A smoke test: load Porthos.
 
-    Not installed yet: a C++ compiler and SUNDIALS, which PHPS needs for its compiled DAE
-    runs (the P7 reference trajectories). See TODO.md.
-
 .PARAMETER SkipPython
-    Do not create the parity-pack generator venv.
+    Do not install the PHPS reference tooling (Python venv, MSYS2 g++ and SUNDIALS).
 
 .PARAMETER RunTests
     Run the test suite at the end (about 15 s once precompiled).
@@ -152,6 +150,22 @@ if ($SkipPython) {
     Invoke-Native $py @('-m', 'pip', 'install', '--quiet', '-r',
                         (Join-Path $Root 'parity\generate\requirements.txt'))
     Ok 'requirements installed'
+
+    Step 'MSYS2 UCRT64 g++ and SUNDIALS (compile PHPS kernels for the parity pack)'
+    $bash = 'C:\msys64\usr\bin\bash.exe'
+    if (-not (Test-Path $bash)) {
+        Invoke-Native winget @('install', '--id', 'MSYS2.MSYS2', '-e',
+                               '--accept-package-agreements', '--accept-source-agreements',
+                               '--disable-interactivity')
+    }
+    if (-not (Test-Path 'C:\msys64\ucrt64\bin\g++.exe') -or
+        -not (Test-Path 'C:\msys64\ucrt64\include\ida\ida.h')) {
+        # the first update may replace MSYS2's own core and end the shell: run it twice
+        Test-Native $bash @('-lc', 'pacman -Syu --noconfirm') | Out-Null
+        Test-Native $bash @('-lc', 'pacman -Syu --noconfirm') | Out-Null
+        Invoke-Native $bash @('-lc', 'pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-sundials')
+    }
+    Ok ('g++: ' + (& 'C:\msys64\ucrt64\bin\g++.exe' --version | Select-Object -First 1))
 }
 
 # 6. Smoke test / tests ------------------------------------------------------------------

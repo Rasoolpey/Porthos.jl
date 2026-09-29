@@ -42,6 +42,11 @@ include("components/governors/ieeeg1.jl")
 include("components/governors/ieeeg3.jl")
 include("components/loads/complexload.jl")
 
+# assembly
+include("assembly/wiring.jl")
+include("assembly/dae.jl")
+include("assembly/sparsity.jl")
+
 # io
 export parse_param_expr, param_value
 export load_case, write_case, load_scenario, write_scenario, load_json_input, validate_json
@@ -61,7 +66,10 @@ export AbstractComponent, build_component, with_params, model_type, state_names,
        outputs!, step_outputs!, modes, hamiltonian, grad_hamiltonian!, grad_hamiltonian,
        injection, norton_admittance, default_contracts
 export GENROU_PHTRUE, GENSAL_PHTRUE, IEEET1_PHTRUE, IEEEG1_PHTRUE, IEEEG3_PHTRUE, COMPLEXLOAD
-export NoModes, ModeLog, UndecidedBranch
+export NoModes, ModeLog, UndecidedBranch, component_role
+# assembly
+export DAESystem, assemble, dae_residual!, dae_residual, nalg, resolve_wiring, InputSource,
+       jacobian_pattern
 # power flow
 export solve_powerflow, PowerFlowSpec, PowerFlowResult, bus_power, BusType, PQ_BUS, PV_BUS,
        SLACK_BUS

@@ -42,6 +42,7 @@ const _COMPLEXLOAD_INPUTS = ["Vd", "Vq"]
 const _COMPLEXLOAD_OUTPUTS = ["Id", "Iq", "Pload", "Qload"]
 
 model_type(::COMPLEXLOAD) = "COMPLEXLOAD"
+component_role(::COMPLEXLOAD) = :load
 state_names(c::COMPLEXLOAD) = c.p.t1 > 0.0 ? ["z"] : String[]
 input_names(::COMPLEXLOAD) = _COMPLEXLOAD_INPUTS
 output_names(::COMPLEXLOAD) = _COMPLEXLOAD_OUTPUTS

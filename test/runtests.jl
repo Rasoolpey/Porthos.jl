@@ -1,5 +1,6 @@
 using Porthos
 using Test
+using SparseArrays
 
 const ROOT = normpath(joinpath(@__DIR__, ".."))
 
@@ -12,6 +13,7 @@ include("parity/common.jl")
         include("unit/network.jl")
         include("unit/powerflow.jl")
         include("unit/components.jl")
+        include("unit/assembly.jl")
     end
     @testset "parity" begin
         include("parity/p0_pack.jl")
@@ -19,5 +21,6 @@ include("parity/common.jl")
         include("parity/p2_network.jl")
         include("parity/p3_powerflow.jl")
         include("parity/p4_components.jl")
+        include("parity/p5_dae.jl")
     end
 end

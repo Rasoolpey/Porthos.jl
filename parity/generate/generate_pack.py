@@ -13,6 +13,8 @@ The pack is built in sections, so later phases can extend it:
     records     certificate records copied unchanged from PHPS         (P11 targets)
     components  model kernels, outputs, H and grad H at random states and inputs, with
                 branch outcomes (see components.py)                    (P4)
+    dae         PHPS's compiled DAE residual f, g at the equilibrium and at random states,
+                fault off and on, with the system layout (see dae.py)  (P5, P6)
 
 A new or regenerated pack is a new baseline: it gets a new artifact hash and a written
 reason in parity/README.md.
@@ -60,7 +62,11 @@ PARITY_CASES = [
      "IEEE39Bus_PF_gfm-voc/bus_fault_gfm_voc_bus16.json"),
 ]
 
-SECTIONS = ("network", "powerflow", "records", "components")
+# Cases of the P5 to P7 gates (roadmap section 1). gfl_zif is not among them: PHPS at
+# ba11ea1 cannot initialise it (coupled network solve does not converge at t = 0).
+DAE_CASES = ("base", "gfl", "vsm", "droop", "voc")
+
+SECTIONS = ("network", "powerflow", "records", "components", "dae")
 
 # PHPS paths whose modification would change the reference numbers. The generator refuses
 # to run if any of them is dirty; other dirty paths (documentation) are recorded.
@@ -304,8 +310,17 @@ def main() -> None:
 
     records = section_records(phps_root, out) if "records" in sections else []
 
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    if "dae" in sections:
+        from dae import section_dae
+        for k, (name, system_rel, scenario_rel) in enumerate(PARITY_CASES):
+            if name not in DAE_CASES:
+                continue
+            write_json(out / "dae" / f"{name}.json",
+                       section_dae(phps_root, name, system_rel, scenario_rel, 20260930 + k))
+            print(f"  dae: {name} done", file=sys.stderr)
+
     if "components" in sections:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
         from components import section_components
         case_by_name = {n: s for n, s, _ in PARITY_CASES}
         for ctype, rec in section_components(phps_root, case_by_name).items():

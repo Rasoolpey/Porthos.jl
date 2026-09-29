@@ -42,6 +42,7 @@ end
 const _IEEEG3_STATES = ["xp", "xr", "at", "x1", "x_water"]
 
 model_type(::IEEEG3_PHTRUE) = "IEEEG3_PHTRUE"
+component_role(::IEEEG3_PHTRUE) = :governor
 state_names(::IEEEG3_PHTRUE) = _IEEEG3_STATES
 input_names(::IEEEG3_PHTRUE) = _GOVERNOR_INPUTS
 output_names(::IEEEG3_PHTRUE) = _GOVERNOR_OUTPUTS

@@ -114,6 +114,14 @@ grad_hamiltonian(c::AbstractComponent, x, p = params(c)) =
 bus(c::AbstractComponent) = nothing
 
 """
+    component_role(c) -> Symbol
+
+`:generator`, `:exciter`, `:governor` or `:load`, as PHPS's `component_role` (it decides the
+wiring refresh after initialisation and the centre-of-inertia members).
+"""
+function component_role end
+
+"""
     injection(c, x, V[, p]) -> (I_re, I_im)
 
 Current the component injects into its bus, in the network (RI) frame, for bus voltage

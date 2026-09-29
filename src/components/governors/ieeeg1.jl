@@ -47,6 +47,7 @@ const _GOVERNOR_INPUTS = ["omega", "Pref", "u_agc"]
 const _GOVERNOR_OUTPUTS = ["Tm"]
 
 model_type(::IEEEG1_PHTRUE) = "IEEEG1_PHTRUE"
+component_role(::IEEEG1_PHTRUE) = :governor
 state_names(::IEEEG1_PHTRUE) = _IEEEG1_STATES
 input_names(::IEEEG1_PHTRUE) = _GOVERNOR_INPUTS
 output_names(::IEEEG1_PHTRUE) = _GOVERNOR_OUTPUTS
