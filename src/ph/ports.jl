@@ -130,3 +130,56 @@ function port_zeros(m::PortModel)
     N = [Matrix{Float64}(I, n, n) zeros(n); zeros(1, n + 1)]
     return sort!(filter(isfinite, eigvals(Mz, N)); by = real)
 end
+
+"""
+    frequency_response(m, ws) -> Vector{ComplexF64}
+
+`G(jw)` at the frequencies `ws` (rad/s): one Hessenberg factorisation of `A`, then a shifted
+Hessenberg solve per frequency (exact for any `A`, also with repeated poles).
+"""
+function frequency_response(m::PortModel, ws::AbstractVector)
+    F = hessenberg(m.A)
+    B = complex.(m.B)
+    return [m.D - dot(m.C, (F - (im * w) * I) \ B) for w in ws]
+end
+
+"""
+    loop_port_model(sys, x, V, k; input, output, projection, contracts) -> PortModel
+
+The rest of the system seen from component `k`: the small-signal transfer from `k`'s
+output `output` (as its consumers receive it) to `k`'s input `input`, with `k` removed and
+everything else (machines, network, loads, other controllers) kept, at the equilibrium
+`(x, V)`. Built from the exact reduced Jacobian on the physical coordinates of `projection`:
+`k` must act on the rest only through `output` and the rest on `k` only through `input`
+(checked: both coupling blocks have rank one). The model is given on the common-angle
+section of the remaining states, where the common-angle mode is removed.
+"""
+function loop_port_model(sys::DAESystem, x::AbstractVector, V::AbstractVector, k::Integer;
+                         input::AbstractString, output::AbstractString,
+                         projection::PhysicalProjection = physical_projection(sys, x, V),
+                         contracts::ContractSet = default_contracts())
+    c = sys.comps[k]
+    ins, _ = component_io(sys, x, V)
+    r = _state_range(sys, k)
+    m = port_model(c, x[r], ins[k]; input, output, contracts)
+    keep = projection.keep
+    pos = Dict(i => l for (l, i) in enumerate(keep))
+    S = [pos[i] for i in r if haskey(pos, i)]
+    length(S) == length(m.states) ||
+        error("$(name(c)): its kept states differ from its port model's states")
+    R = setdiff(1:length(keep), S)
+    A = reduced_jacobian(sys, x, V)[keep, keep]
+    ARS, ASR = A[R, S], A[S, R]
+    b = ARS * m.C / dot(m.C, m.C)                 # how the output drives the rest
+    cr = vec(m.B' * ASR) / dot(m.B, m.B)          # how the rest drives the input
+    tol = 1e-9 * max(1.0, maximum(abs, A))
+    maximum(abs, ARS .- b * m.C') <= tol ||
+        error("$(name(c)) acts on the rest through more than its output $output")
+    maximum(abs, ASR .- m.B * cr') <= tol ||
+        error("$(name(c)) is driven by the rest through more than its input $input")
+    l = projection.coi[keep][R]
+    U = nullspace(reshape(l, 1, :))
+    maximum(abs, l' * A[R, R]) <= tol || error("the common-angle section is not invariant")
+    return PortModel("rest of " * name(c), ["section $i" for i in 1:size(U, 2)],
+                     String(output), String(input), U' * A[R, R] * U, U' * b, U' * cr, 0.0)
+end

@@ -109,7 +109,8 @@ export DAEWorkspace, SimResult, simulate_bdf1, simulate_ida, consistent_voltages
 export storage_components, total_hamiltonian, grad_total_hamiltonian, hessian_total_hamiltonian,
        solve_network, reduced_field, reduced_jacobian, PhysicalProjection, reservoir_states,
        physical_projection, shifted_storage_audit, PortModel, port_model, transfer,
-       real_part_crossings, passivity_certificate, port_zeros
+       real_part_crossings, passivity_certificate, port_zeros, frequency_response,
+       loop_port_model
 # PowerFactory
 export PFResults, read_pf_results, pf_signal, pf_command, pf_simulate, pf_inspect,
        pf_machine_map, pf_compare

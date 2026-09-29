@@ -228,8 +228,11 @@ src/ph/storage.jl         storage components, H / grad H / Hess H, solve_network
 src/ph/audit.jl           PhysicalProjection (contract reservoirs, held states, COI section),
                           shifted_storage_audit
 src/ph/ports.jl           PortModel (a component linearised at one port), transfer,
-                          real_part_crossings, passivity_certificate, port_zeros
+                          real_part_crossings, passivity_certificate, port_zeros,
+                          frequency_response (Hessenberg), loop_port_model (the rest of
+                          the system seen from one component, exact)
 scripts/ph_audit.jl       the audits at Porthos's equilibrium, JSON report (one command)
+scripts/governor_passivity.jl  governor shortage vs the rest's excess, per governor
 parity/generate/sim.py    sim section: PHPS's compiled BDF1 / IDA runs (5 ms grid, binary)
 ext/                      PorthosMakieExt (CairoMakie), PorthosJuMPExt (JuMP): empty stubs
 parity/generate/generate_pack.py   pack generator (network, powerflow, records, components)
@@ -376,6 +379,23 @@ PowerFactory. The agent's proposal, **waiting for the user's answers**:
 - Remaining questions: (1) answered above;
   (2) what counts as validation for a reworked model? (3) do the physical choices match
   what the supervisor wants? (4) start the P10 audit tooling now?
+- **Governor test done (2026-09-29, user: "let's do the first test")**:
+  `scripts/governor_passivity.jl`. For each governor it opens the loop exactly at the
+  governor (`loop_port_model`; the rest of the system as input Tm -> output omega on the
+  common-angle section; closing it again reproduces the 171 eigenvalues to 1e-14) and
+  compares the governor's shortage nu with the rest's excess rho = min Re(1/G_rest(jw))
+  (grid and the limit at infinity, -c'Ab/(c'b)^2). Results on the base case:
+  - IEEEG1_2 to IEEEG1_9 (8 sets): rho - nu = +1.38 to +3.79, **passes**. A joint
+    governor-plus-rest storage exists with the classical split. Next: construct it and check
+    it with `shifted_storage_audit`.
+  - IEEEG1_10 (G 09, bus 38): **fails, and not because of the governor.** The rest of the
+    system seen from G 09's speed port has a lightly damped zero pair at -0.0367 +- 1.4213i;
+    near 1.55 rad/s Re(1/G_rest) = -1470, so the rest is not passive at that port (even the
+    frequency-wise margin is -1467). Next: find which part of the rest causes it (exciters,
+    other governors, loads), e.g. by opening further loops.
+  - IEEEG3_11 (hydro): the index test fails (nu = 50.7 against rho = 2.1), but the
+    frequency-wise margin is positive at every frequency (+2.105, at infinity). A joint
+    storage exists, but its split needs a frequency-dependent multiplier.
 - P10 tooling: **done** (see the status table). Next, in this order: (a) the port-residual
   audit (reconstruct each port's power independently and compare with grad H' f, grouped
   by component and connection; PHPS work package 1 item 3); (b) the storage search that
