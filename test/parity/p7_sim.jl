@@ -20,6 +20,7 @@ const P7_IDA_TOL = 1e-6
 const P7_CSV_TOL = 1e-9
 const P7_SLIDE_STEPS = 10
 const P7_GRID = 0.005
+const P7_IDA_REPORT_ONLY = ("vsm", "droop", "voc")
 
 # Porthos's rows of the state vector, by name
 p7_row_names(sys) = [state_names(sys);
@@ -131,7 +132,10 @@ end
                                            Float64(meta("bdf1")[:settings][:dt]))
                 before = tp .< t_slide
                 @test any(before)
-                @test maximum(err[before]) <= P7_IDA_TOL
+                # On the converter cases IDA is reported, not gated (user, 2026-10-01): its
+                # differences to PHPS start at limiter events where both IDAs already depend
+                # on their tolerance (1e-9 vs 1e-10); BDF1 above is the exact check there.
+                cname in P7_IDA_REPORT_ONLY || @test maximum(err[before]) <= P7_IDA_TOL
                 kb = findall(before)[argmax(err[before])]
                 after = any(.!before) ? maximum(err[.!before]) : 0.0
                 @info "P7 $cname IDA 1e-10: first sliding mode at t = $t_slide; before it " *

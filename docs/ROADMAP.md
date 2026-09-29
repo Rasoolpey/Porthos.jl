@@ -252,6 +252,13 @@ Timings of the current pipeline, which these measures target (2026-09-29, IEEE-3
 
 ## Part I: Julia implementation
 
+> **Decision (user, 2026-10-01): parity is frozen; active work is P11 and Target B (II.2).**
+> PHPS is a porting reference, not ground truth. The parity suite stays as a regression
+> guardrail (last pack: v6), but no further parity refinement is done, and the phase order
+> below no longer decides what comes next: `TODO.md` ("Goal and next steps") does. The P11
+> gate numbers taken from PHPS's certificate records are sanity references for the new
+> pipeline, not targets to chase.
+
 Each phase ends with a **parity gate** against the parity pack. A phase is done only when its
 gate passes in CI.
 

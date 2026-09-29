@@ -102,8 +102,7 @@ end
                     "GFM_DROOP_PHTRUE" => Dict("pf_frame" => 1.0, "adapt_droop" => 1.0,
                                                "adapt_vi" => 1.0, "vi_mode" => 1.0,
                                                "x_vi" => 0.01),
-                    "GFM_VOC_PHTRUE" => Dict("pf_frame" => 1.0, "i_ref_max" => 5.0,
-                                             "pvoc_mode" => 1.0))
+                    "GFM_VOC_PHTRUE" => Dict("pf_frame" => 1.0, "i_ref_max" => 5.0))
     for (type, file) in cases
         case = load_case(case_path(file))
         pf = solve_powerflow(case)
@@ -148,6 +147,10 @@ end
                 end
             end
             @test contract(c).model == contract_key(type)
+            # the passivity-based VOC has no parity reference and is rejected
+            if type == "GFM_VOC_PHTRUE"
+                @test_throws ArgumentError with_params(c, Dict("pvoc_mode" => 1.0))
+            end
         end
     end
 end

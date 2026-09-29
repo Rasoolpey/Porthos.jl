@@ -8,8 +8,13 @@
 # integrator, so not a centre-of-inertia member):
 #   v' = chi v + eta J (i* - i),  chi = xi (V_nom^2 - |v|^2),  J = e^{j phi},
 #   i* = (p_set - j q_set) / conj(V)            (terminal voltage)
-# or, with pvoc_mode = 1, the passivity-based VOC of Kong et al. (2022). Output chain: the
-# predictive virtual-impedance divider (`_vi_divider`) on v.
+# Output chain: the predictive virtual-impedance divider (`_vi_divider`) on v.
+#
+# pvoc_mode = 1 (the passivity-based VOC of Kong et al., 2022) is implemented as PHPS has it
+# but is not supported: it has no parity reference (it calls tanh, which PHPS's Python kernel
+# translation at ba11ea1 lacks, so PHPS runs it only compiled, and no parity case uses it),
+# so the constructor rejects it. Supporting it needs a compiled PHPS reference for its
+# branches (a C++ component harness, like the `dae` section's).
 #
 # States  [v_alpha, v_beta, x_tank, Vd_meas, Vq_meas, Id_meas, Iq_meas, Id_lpf2, Iq_lpf2,
 #          p_pvoc, q_pvoc]
@@ -86,6 +91,9 @@ end
 
 function GFM_VOC_PHTRUE(name::String, d::ParamDict)
     f(k) = _p(d, k, name)
+    f("pvoc_mode") > 0.5 &&
+        throw(ArgumentError("$name: GFM_VOC_PHTRUE with pvoc_mode = 1 (passivity-based VOC) " *
+                            "is not supported: it has no PHPS parity reference"))
     p = GfmVocParams(f("xi"), f("eta"), f("V_nom"), f("omega_n"), f("phi"), f("Zseries"),
                      f("ra"), f("xd_double_prime"), f("p_set"), f("q_set"), f("r_vi"),
                      f("x_vi"), f("i_lim"), f("kpr"), f("kpx"), f("i_ref_max"), f("pvoc_mode"),

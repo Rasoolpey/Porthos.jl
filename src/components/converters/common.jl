@@ -13,8 +13,9 @@ x_eff(i)), searched on [0, du_mag / Zseries], with the comparisons of PHPS's C++
 (`mid > i_lim` for the boost, `g_sq < du_sq` for the side). A numerical root solve, not a
 limiter: its comparisons are not branch sites (the late ones sit on the root by
 construction, so they are not recorded or matched against PHPS); the regime switch is the
-`ipred_mag > i_lim` site after it. The comparisons are the decided ones (`_gt`, `_lt`),
-which an interval method replaces by a root enclosure (P11).
+`ipred_mag > i_lim` site after it. The comparisons go through the branch primitives with
+the non-recording `NoModes()` recorder; a validated root enclosure for interval arguments
+belongs to P11.
 """
 @inline function vi_bisection(du_mag, Zseries, i_lim, r_vi, x_vi, kpx, kpr)
     lo = zero(du_mag)
@@ -22,11 +23,11 @@ which an interval method replaces by a root enclosure (P11).
     du_sq = du_mag * du_mag
     for _ in 1:60
         mid = 0.5 * (lo + hi)
-        ov_k = _gt(mid, i_lim) ? mid - i_lim : zero(mid)
+        ov_k = gt(NoModes(), mid, i_lim) ? mid - i_lim : zero(mid)
         re_k = r_vi + kpr * ov_k
         xe_k = Zseries + x_vi + kpx * ov_k
         g_sq = mid * mid * (re_k * re_k + xe_k * xe_k)
-        if _lt(g_sq, du_sq)
+        if lt(NoModes(), g_sq, du_sq)
             lo = mid
         else
             hi = mid
@@ -43,7 +44,7 @@ function vi_bisection(du_mag::ForwardDiff.Dual{T}, Zseries, i_lim, r_vi, x_vi, k
                       kpr) where {T}
     d = ForwardDiff.value(du_mag)
     i = vi_bisection(d, Zseries, i_lim, r_vi, x_vi, kpx, kpr)
-    on = _gt(i, i_lim)
+    on = gt(NoModes(), i, i_lim)
     ov = on ? i - i_lim : zero(i)
     re = r_vi + kpr * ov
     xe = Zseries + x_vi + kpx * ov

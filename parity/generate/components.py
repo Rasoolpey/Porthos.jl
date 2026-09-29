@@ -88,7 +88,8 @@ UNREACHED = {
     # pvoc_mode = 1 (Kong et al.) calls tanh, which PHPS's Python translation of the
     # kernels (src/dirac/py_codegen at ba11ea1) does not provide: PHPS can only run that
     # mode compiled, so there is no Python reference for it. No parity case uses it.
-    "GFM_VOC_PHTRUE": {"vsq > 1.0e-6": "pvoc_mode = 1 only; PHPS's py_codegen has no tanh"},
+    "GFM_VOC_PHTRUE": {"vsq > 1.0e-6": "pvoc_mode = 1 only; PHPS's py_codegen has no tanh; "
+                                       "unsupported in Porthos (rejected at construction)"},
 }
 
 _KEYWORDS = {"and", "or", "not", "True", "False", "math", "abs", "min", "max"}

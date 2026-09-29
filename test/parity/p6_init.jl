@@ -7,8 +7,17 @@
 # equilibrium solve uses: it contains PHPS's own residual (its multi-pass initialisation is
 # not tight) and the effect of the small set-point differences. J^+ is the pseudo-inverse
 # of the reduced Jacobian at Porthos's solution (same rows and unknowns as the solve).
+#
+# One named exception to the 1e-12 residual (user decision, 2026-10-01): the measured-current
+# lag rows Id_meas and Iq_meas of GFM_DROOP_PHTRUE may reach 2e-12. Their row
+# (I - I_meas)/Tmeas_i carries the rounding of I = (u_out - V)/(j Zseries) amplified by
+# 1/(Zseries Tmeas_i), and u_out depends on I_meas through r_vi = Zseries (loop gain 1), so no
+# floating-point I_meas zeroes both rows (droop: 1.42e-12, one to two ulps of |I| = 7 pu).
+# The test checks that every row above 1e-12 is one of these.
 
 const P6_RES_TOL = 1e-12
+const P6_RES_EXCEPTION_TOL = 2e-12
+p6_excepted(c, state) = model_type(c) == "GFM_DROOP_PHTRUE" && state in ("Id_meas", "Iq_meas")
 const P6_MATCH = 1e-10
 const P6_PARAM_ATOL = 1e-8
 const INIT_KEYS = ("Efd0", "Tm0", "PFD_REF", "Vref", "PM_REF", "Pref", "V0", "Vini",
@@ -37,8 +46,18 @@ const INIT_KEYS = ("Efd0", "Tm0", "PFD_REF", "Vref", "PM_REF", "Pref", "V0", "Vi
             @test close_to(r.x_initial, Float64.(d[:equilibrium][:x_initial]); atol = 1e-12,
                            rtol = 1e-12)
 
-            # residual at Porthos's equilibrium
-            @test r.residual <= P6_RES_TOL
+            # residual at Porthos's equilibrium: 1e-12 on every row but the named exception
+            f, g = dae_residual(sys, r.x, r.V)
+            @test maximum(abs, g) <= P6_RES_TOL
+            excepted = falses(nd)
+            for (k, c) in enumerate(sys.comps), (j, st) in enumerate(state_names(c))
+                excepted[sys.offsets[k] + j - 1] = p6_excepted(c, st)
+            end
+            @test all(abs(f[i]) <= P6_RES_TOL for i in 1:nd if !excepted[i])
+            @test all(abs(f[i]) <= P6_RES_EXCEPTION_TOL for i in 1:nd if excepted[i])
+            above = [state_names(sys)[i] for i in 1:nd if abs(f[i]) > P6_RES_TOL]
+            isempty(above) || @info "P6 $cname: rows above 1e-12 (all within the droop " *
+                                    "current-lag exception): $(join(above, ", "))"
 
             # distance to PHPS's equilibrium
             e = d[:equilibrium]
