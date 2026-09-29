@@ -7,7 +7,10 @@ Last session: 2026-09-29 (second session that day). P0 to P3 are done. P4 is don
 synchronous-machine set (GENROU, GENSAL, IEEET1, IEEEG1, IEEEG3, COMPLEXLOAD), P5 and P6 for
 the base case, and P7's PHPS gates pass on the base case against parity pack v4
 (published). P7 is closed on the PHPS gates (PowerFactory item dropped, LineFault / rk4
-left unsupported; see "Decided"). The converters come after the P5 to P7 slice. The test suite passes (1460 tests, about 2 minutes: the P7 gate runs the full
+left unsupported; see "Decided"). **New: the PowerFactory driver** (`pf/`, PowerFactory
+2022 SP1): model dump, RMS runs of Porthos scenarios, and a Julia comparison; Porthos
+matches PowerFactory on the base bus-16 fault more closely than PHPS's own record. The
+converters come after the P5 to P7 slice. The test suite passes (1460 tests, about 2 minutes: the P7 gate runs the full
 6 s BDF1); the only tests marked broken are the P5 and P6 converter cases.
 
 **Committed and pushed** on `master` (2026-09-29): everything up to and including this
@@ -43,6 +46,23 @@ session's P6, P7, precompile workload and pack v4 binding.
    the agent (the roadmap gives none); the actual differences are below 8.4e-10.
 
 ## Decided (2026-09-29)
+
+- **PowerFactory driver** (user: build the PowerFactory tooling first, in Porthos, without
+  copying PHPS_Opt's 102 MB `pf/` folder). `pf/` is a small Python package, standard
+  library only, run with PowerFactory 2022 SP1's Python 3.10: `py -3.10 pf/run.py inspect`
+  (model and load flow to JSON) and `py -3.10 pf/run.py simulate <scenario>` (the
+  scenario's BusFaults as `EvtShc` in a fresh copy "Porthos" of study case "Base"; full
+  precision CSV and `run.json` with the column map). Julia: `src/io/powerfactory.jl`
+  (`pf_simulate`, `pf_inspect`, `read_pf_results`, `pf_compare` with PHPS's metrics) and
+  `scripts/pf_compare_fault.jl` (one command). `AGENTS.md` and the roadmap (2.5, P7) now
+  name `pf/` as the second Python exception (it drives PowerFactory, computes nothing) and
+  the only way to run PowerFactory. What was learned about PowerFactory 2022 is in
+  `pf/README.md` (engine vs window, the INI workaround, time units in ms, full-precision
+  export, the column map).
+- **Result on the base case**: load flow within 2.2e-9 pu / 1.8e-6 deg; bus-16 fault
+  (150 ms), Porthos IDA against PowerFactory: rotor angles 0.38 to 0.65 deg RMS (max
+  1.32 deg), speeds below 9.5e-5 pu RMS, P 0.015 to 0.035 pu RMS; every metric smaller than
+  PHPS's recorded comparison (0.48 to 0.79 deg RMS, max 1.68 deg).
 
 - **Parity pack v4 is published**: release `parity-pack-v4` with `parity_pack-v4.tar.gz`
   (sha256 `d055ebf55875f72d6f5c1e6632b9be5f98c7a549e68cd2dd7c681733f36399c0`, tree hash
@@ -90,6 +110,13 @@ session's P6, P7, precompile workload and pack v4 binding.
   tools such as CairoMakie are installed into Julia's default environment on first use.
 
 ## Environment on this machine
+
+- **PowerFactory 2022 SP1** at `C:\Program Files\DIgSILENT\PowerFactory 2022 SP1`, Python
+  module for 3.10 (Python 3.10.11 is installed: `py -3.10`). Project
+  "39 Bus New England System", study case "Base". **Close the PowerFactory window** before
+  any `pf/` run (the engine cannot start while it is open: exit code 4002). Compare a
+  scenario: `julia --project=. scripts/pf_compare_fault.jl [scenario.json]` (about 5 s of
+  PowerFactory).
 
 One-command setup: `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 [-RunTests]`
 (juliaup, Julia 1.12 as a juliaup override for this directory, `Pkg.instantiate`, the parity
@@ -174,6 +201,11 @@ src/sim/results.jl        csv_columns / csv_row / write_results_csv / write_resu
                           run_metadata (records the settings the integrator used), simulate
 src/precompile.jl         PrecompileTools workload for the simulation path
 scripts/run_base_fault.jl simulate the base-case bus-16 fault and plot it (one command)
+src/io/powerfactory.jl    PowerFactory results reader, pf_simulate / pf_inspect (run pf/),
+                          pf_machine_map (case _pf keys), pf_compare (PHPS's metrics)
+pf/                       PowerFactory driver (Python 3.10, stdlib): run.py, porthospf/
+                          (session, inspect_model, simulate), config.json, README.md
+scripts/pf_compare_fault.jl  PowerFactory and Porthos on one scenario, compared (one command)
 parity/generate/sim.py    sim section: PHPS's compiled BDF1 / IDA runs (5 ms grid, binary)
 ext/                      PorthosMakieExt (CairoMakie), PorthosJuMPExt (JuMP): empty stubs
 parity/generate/generate_pack.py   pack generator (network, powerflow, records, components)
@@ -286,8 +318,47 @@ test/unit/, test/parity/p0..p7     unit tests and the P0 to P7 gates (common.jl:
 
 ## Next steps
 
-Software tools first (user, 2026-09-29); the control-related items at the end wait for a
-method discussion with the user.
+The user's direction (2026-09-29): the models must be properly defined before the
+stability tooling. The governor, exciter and GFL reservoir models are not passive and need
+rework, so that `H` can serve as the Lyapunov function and the ROA builds on it (sources:
+`PHPS_Opt/study/presentation/response_to_reviewer_component_models.tex`, the supervisor's
+review; `PHPS_Opt/phps/PHPS_nonlinear_PH_Lyapunov_ROA_roadmap.md` 0.2b and 0.2c, Target B).
+The PowerFactory driver was built first, so that reworked models can be checked against
+PowerFactory. The agent's proposal, **waiting for the user's answers**:
+
+- Diagnosis: (1) the reservoirs are one-way coupled, give no storage along plant
+  directions (H_s rank 54/171; H_gfl rank 1 of 13) and are constant-power supplies;
+  (2) the controller layers are not passive at their ports (IEEEG1 proved for any storage,
+  IEEEG3 right-half-plane zero, IEEET1 open); (3) the GFL states have no storage.
+- Principle for the rework: each reservoir a physical store coupled both ways, fed by a
+  constant-effort source (pressure, head, dc voltage behind a loss) instead of a
+  constant-power one, with the controller only modulating the power path (valve,
+  modulation index). IEEEG1: boiler / steam chest pressure. IEEEG3: penstock water column
+  plus head (the RHP zero becomes physical storage). IEEET1: dc supply behind the exact
+  E_fd i_fd port, plus AVR storage (maybe joint with the machine). GFL: dc link with dc
+  voltage control. Controller states still need storage (roadmap B2, B3).
+- Keep the PHPS models as the parity-anchored set; add the reworked ones as new component
+  types; validate each against its original (a limit in which it reduces to it, and the
+  bounded deviation on the fault cases; now also against PowerFactory with `pf/`).
+- **User's answer (2026-09-29): keep the dynamics the same if at all possible**, that is
+  the storage-only route (PHPS roadmap B1 to B3 and B4 items 1 to 3): new storage terms,
+  joint storages (machine-governor, machine-exciter), a different supply rate or port
+  pairing, and different state realisations of the same validated equations. Trajectories,
+  PHPS parity and the PowerFactory match stay exact. Known limit: at the *current* ports,
+  IEEEG1 is proved non-passive for any storage and IEEEG3 has a right-half-plane zero, and
+  no realisation changes an input-output property, so these need a joint storage with the
+  machine or another port pairing. The physical two-way reservoirs above would change the
+  dynamics and are the fallback only.
+- Remaining questions: (1) answered above;
+  (2) what counts as validation for a reworked model? (3) do the physical choices match
+  what the supervisor wants? (4) start the P10 audit tooling now?
+- Tooling that judges every candidate, in Porthos, before any redesign (P10): physical-state
+  projection, shifted-storage audit (Hessian and nullspace, sym(SA), exact nonlinear
+  dH_s/dt), port-residual audit, passivity indices and KYP per component (JuMP); gate:
+  reproduce PHPS's rank 54/171, 41 positive eigenvalues (max +12.882693) and the IEEEG1
+  crossing at 1.934718 rad/s.
+
+Software tools, as before:
 
 1. **Grid-forming converters** (P4 item 5): `GFM_VSM_PHTRUE`, `GFM_DROOP_PHTRUE`,
    `GFM_VOC_PHTRUE`, ported as PHPS has them at `ba11ea1`. Then P5 to P7 on the vsm, droop

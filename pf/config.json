@@ -1,0 +1,18 @@
+{
+  "powerfactory_dir": "C:\\Program Files\\DIgSILENT\\PowerFactory 2022 SP1",
+  "python_version": "3.10",
+  "project": "39 Bus New England System",
+  "study_case": "Base",
+  "working_study_case": "Porthos",
+  "bus_name": "Bus {:02d}",
+  "ini_drop": {"license": ["type"]},
+  "rms": {
+    "dt_ms": 1.0,
+    "t_start_ms": -100.0
+  },
+  "variables": {
+    "ElmSym": ["s:firot", "s:firel", "s:speed", "m:Psum:bus1", "m:Qsum:bus1", "m:u:bus1",
+               "s:xmt", "s:xme", "s:ve", "s:ie"],
+    "ElmTerm": ["m:u", "m:phiu", "m:ur", "m:ui"]
+  }
+}

@@ -38,13 +38,18 @@ Rules for using it:
 - Don't copy data in advance. Bring a file in only when a phase needs it, unchanged, and note
   the PHPS commit it came from. Large data (PowerFactory references, the parity pack) goes into
   artifacts, not git.
-- Never start `PowerFactory.exe` (or its launcher) from the shell. Run, inspect and modify
-  PowerFactory studies only through the scripts in `PHPS_Opt\pf\api`.
+- Never start `PowerFactory.exe` (or its launcher) from the shell. Run and inspect
+  PowerFactory only through Porthos's driver in `pf/` (`py -3.10 pf/run.py ...`, or
+  `pf_simulate` / `pf_inspect` from Julia; see `pf/README.md`), which works in a copy of the
+  study case. `PHPS_Opt\pf\api` is reference only. The engine cannot start while the
+  PowerFactory window is open: ask the user to close it.
 
 ## Rules for this repository
 
 - Julia does all computing. Python may only edit JSON and call Porthos entry points (roadmap
-  section 0 and 2.5).
+  section 0 and 2.5). Two exceptions, both computing nothing themselves:
+  `parity/generate/` (runs PHPS to make the parity pack) and `pf/` (drives PowerFactory,
+  whose API is Python only, and writes what PowerFactory computed).
 - Component code:
   - is generic in the number type;
   - uses the limiter primitives, never a bare `if` on a state-dependent value;

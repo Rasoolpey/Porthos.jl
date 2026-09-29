@@ -63,6 +63,9 @@ include("sim/bdf1.jl")
 include("sim/ida.jl")
 include("sim/results.jl")
 
+# PowerFactory interface (runs pf/, reads its results)
+include("io/powerfactory.jl")
+
 # cached compilation of the simulation path
 include("precompile.jl")
 
@@ -96,6 +99,9 @@ export init_from_phasor, init_from_targets, MachineTargets, first_pass, solve_eq
 export DAEWorkspace, SimResult, simulate_bdf1, simulate_ida, consistent_voltages!,
        simulate, csv_columns, csv_row, write_results_csv, write_results_jld2, run_metadata,
        observable_names, observable_values!
+# PowerFactory
+export PFResults, read_pf_results, pf_signal, pf_command, pf_simulate, pf_inspect,
+       pf_machine_map, pf_compare
 # power flow
 export solve_powerflow, PowerFlowSpec, PowerFlowResult, bus_power, BusType, PQ_BUS, PV_BUS,
        SLACK_BUS

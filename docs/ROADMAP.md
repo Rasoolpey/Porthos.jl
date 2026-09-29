@@ -223,7 +223,11 @@ Each primitive:
 `simulate(scenario_path)`, `cct(case, bus, ...)` and `certify_roa(case, ...)`. Each returns
 the record path. A lint test enforces the rule: modules under `python/` may not import NumPy,
 SciPy or matplotlib, except in the JSON-editing helpers. `parity/generate/` is outside
-`python/` and is not covered by the rule (section 1).
+`python/` and is not covered by the rule (section 1). Neither is `pf/`, the PowerFactory
+driver (added 2026-09-29, `pf/README.md`): PowerFactory's API is Python only, so `pf/` starts
+the PowerFactory engine, sets up events in a copy of the study case, runs the RMS
+simulation and writes PowerFactory's own export and JSON records, using the standard library
+only; everything computed from those results is in Julia (`src/io/powerfactory.jl`).
 
 ### 2.6 Performance measures
 
@@ -340,7 +344,11 @@ For each type, implement `rhs!`, `outputs!`, `injection`, `initialize`, `hamilto
   - no PowerFactory comparison (decided 2026-09-29, replacing "at production tolerances,
     against the PowerFactory references"): the user validated PHPS against PowerFactory, so
     parity with PHPS carries that validation over. PowerFactory 24 is not available on the
-    build machine to re-record the traces, and PHPS_Opt no longer holds them.
+    build machine to re-record the traces, and PHPS_Opt no longer holds them. The PowerFactory driver (`pf/`, PowerFactory 2022 SP1, which is on the build
+    machine) now runs the comparison directly, as a tool rather than a gate
+    (`scripts/pf_compare_fault.jl`). On the base bus-16 fault, Porthos matches PowerFactory's
+    load flow within 2.2e-9 pu, and its rotor angles within 0.38 to 0.65 deg RMS, closer on
+    every machine than PHPS's recorded comparison against PowerFactory 2024.
 - `LineFault` and `rk4` (decided 2026-09-29): not supported for now. The only scenario with
   either (`IEEE39Bus/mid_line_fault.json`) points at a system file that does not exist, so
   PHPS cannot run it; Porthos loads it and refuses to simulate it with a clear error.
