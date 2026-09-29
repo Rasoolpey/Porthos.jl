@@ -1,0 +1,32 @@
+# Python environment for the parity-pack generator (parity/generate/generate_pack.py).
+#
+# This is the only Python in Porthos that computes: it runs PHPS to produce the reference
+# numbers. The versions are pinned to the ones parity pack v1 was generated with
+# (Python 3.13.15, Windows 11); the top-level packages are PHPS's phps/requirements.txt at
+# commit ba11ea1, and the rest are their dependencies. Regenerating a pack with other
+# versions is a new baseline (see parity/README.md).
+#
+# Install (scripts/setup.ps1 does this):
+#   py -3.13 -m venv parity/generate/.venv
+#   parity/generate/.venv/Scripts/python.exe -m pip install -r parity/generate/requirements.txt
+
+# PHPS requirements
+numpy==2.5.3
+pandas==3.0.6
+matplotlib==3.11.2
+scipy==1.18.1
+sympy==1.14.0
+networkx==3.7
+
+# their dependencies
+contourpy==1.4.0
+cycler==0.12.1
+fonttools==4.66.0
+kiwisolver==1.5.1
+mpmath==1.3.0
+packaging==26.3
+pillow==12.3.0
+pyparsing==3.3.3
+python-dateutil==2.9.0.post0
+six==1.17.0
+tzdata==2026.4

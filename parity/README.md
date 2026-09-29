@@ -16,9 +16,10 @@ PHPS from a read-only checkout, refuses to run when PHPS inputs (`phps/src`, `ph
 and any other dirty paths.
 
 ```
-# once: a venv with PHPS's requirements (git-ignored)
+# once: the generator venv, pinned in generate/requirements.txt (git-ignored);
+# scripts/setup.ps1 does this
 py -3.13 -m venv parity/generate/.venv
-parity/generate/.venv/Scripts/python.exe -m pip install -r <PHPS_Opt>/phps/requirements.txt
+parity/generate/.venv/Scripts/python.exe -m pip install -r parity/generate/requirements.txt
 
 # generate into a new directory, then bind it
 parity/generate/.venv/Scripts/python.exe parity/generate/generate_pack.py \

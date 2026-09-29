@@ -229,13 +229,15 @@ Both formats have a JSON Schema in `cases/schema/`, and the loader validates aga
 ```
 Porthos.jl/
 ├── README.md
+├── TODO.md                 current state, open decisions, next steps (updated each session)
 ├── LICENSE
 ├── Project.toml            name, uuid, [deps], [weakdeps], [extensions], [compat]
 ├── Manifest.toml           committed: the exact environment that every record hashes
 ├── Artifacts.toml          content hashes of the parity pack and the PowerFactory references
 ├── src/
 │   ├── Porthos.jl          module, public API, includes
-│   ├── io/                 schemas, loaders, expression reader, writers, run metadata
+│   ├── io/                 schemas, loaders, expression reader, parameter processing,
+│   │                       parity-pack reader; later writers and run metadata
 │   ├── network/            Y-bus, transformers, shunts, fault and topology events
 │   ├── components/
 │   │   ├── interface.jl    AbstractComponent and the interface functions
@@ -256,19 +258,21 @@ Porthos.jl/
 ├── ext/                    loaded only when the heavy dependency is loaded
 │   ├── PorthosMakieExt/    report: figures (CairoMakie)
 │   └── PorthosJuMPExt/     design, KYP and LMI programs (JuMP + solvers)
-├── cases/                  case and scenario JSON, same format as PHPS
+├── cases/                  case and scenario JSON, same format as PHPS (README: PHPS commit)
 │   └── schema/             system.schema.json, scenario.schema.json
 ├── contracts/              model_port_contracts.json (schema 2.1-reservoir-corrected)
 ├── parity/
-│   ├── generate/           Python, run once against a pinned PHPS checkout to build the pack
-│   └── README.md           pack contents, PHPS commit, hashes
+│   ├── generate/           generate_pack.py + pinned requirements.txt: run against a PHPS
+│   │                       checkout to build the pack
+│   └── README.md           pack contents, PHPS commit, hashes, baselines
 ├── test/
 │   ├── runtests.jl
 │   ├── unit/               components, primitives, solvers, interval decisions
 │   ├── parity/             one file per P-gate
 │   └── lint/               the Python import rule
 ├── bench/                  timing suite for the numbers in "Why a rewrite"
-├── scripts/                command-line entry points: simulate.jl, cct.jl, certify.jl
+├── scripts/                setup.ps1 (one-command install), bind_parity_pack.jl; later the
+│                           command-line entry points simulate.jl, cct.jl, certify.jl
 ├── python/                 thin juliacall wrapper: pyproject.toml, porthos/__init__.py
 ├── docs/
 │   ├── ROADMAP.md
@@ -296,9 +300,43 @@ Why some of it is laid out this way:
 
 ---
 
+## Setup
+
+On Windows, one command installs everything: juliaup and Julia 1.12 (pinned for this
+directory), the Julia packages from the committed Manifest, the parity pack, and the Python
+environment used only to regenerate the parity pack from PHPS:
+
+```
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1            # add -RunTests to run the suite
+```
+
+It can be re-run safely. `-SkipPython` leaves out the parity-pack generator's Python
+environment (pinned in [parity/generate/requirements.txt](parity/generate/requirements.txt)).
+On other systems: install Julia 1.12 (juliaup), then
+`julia --project -e "using Pkg; Pkg.instantiate()"`.
+
+## What works now (P0 to P3)
+
+```julia
+using Porthos
+
+case = load_case("cases/IEEE39Bus_PF/system_phtrue.json")      # schema-validated
+sc   = load_scenario("cases/IEEE39Bus_PF/bus_fault_bus16_150ms.json")
+
+Y  = ybus_dae(case)                   # DAE network matrix (loads, Norton stamps), sparse
+Yf = with_fault(Y, fault_shunts(Network(case), sc.events))     # fault-on network
+pf = solve_powerflow(case)            # Newton-Raphson, same iterates as PHPS
+pf.V, pf.theta
+
+pack = load_parity_pack()             # PHPS reference numbers, every file hash-checked
+```
+
+Tests: `julia --project test/runtests.jl`, or `scripts\setup.ps1 -RunTests`. The Y-bus
+matches PHPS bit for bit and the power flow to about `4e-15` on all six parity cases.
+
 ## Planned usage
 
-> Target API: none of this works yet.
+> Target API: not implemented yet.
 
 **Julia**
 
@@ -342,21 +380,21 @@ The full plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ### Part I: reach parity with PHPS
 
-| Phase | What is built | Gate |
-|---|---|---|
-| P0 | environment, pinned dependencies, parity pack import | CI runs; every parity file loads |
-| P1 | loaders, schemas, contract loader, expression reader | every JSON under `cases/` loads and round-trips |
-| P2 | Y-bus, bus map, fault admittances | Y-bus equal to PHPS within `1e-12` |
-| P3 | Newton-Raphson power flow | voltages match PHPS and the case `v0`/`a0` within `1e-8` |
-| P4 | components, active set first | `rhs`, outputs, injection, `H` and `∇H` match at 200 random states with both limiter branches exercised; contract identical |
-| P5 | assembly, DAE residual, sparsity | `f` and `g` match at 50 random states per case |
-| P6 | initialisation | `x*` and `V*` match PHPS; DAE residual at most `1e-12` |
-| P7 | simulation, events, results writer | bus-16 fault: BDF1 against BDF1, IDA against IDA, and the PowerFactory metrics |
-| P8 | reports | figures regenerate from records alone |
-| P9 | studies | recorded anchors reproduced: CCT, energy walls, frequency indices, Q-V margin `6.055 → 12.383 pu`, `D_r` |
-| P10 | port-Hamiltonian audits | rank `54/171`, 41 positive eigenvalues, max `+12.882693`; IEEEG1 crossing at `1.934718 rad/s`; KYP infeasible on all nine sets |
-| P11 | ROA certificate pipeline | `verified_valid_level = 2.69e-12` for both candidate `P`; centered decay at `5.16e-10`; all 83 contract clauses pass |
-| P12 | Python wrappers; old pipeline retired | a fresh clone reproduces the parity suite with one command |
+| Phase | What is built | Gate | Status |
+|---|---|---|---|
+| P0 | environment, pinned dependencies, parity pack import | CI runs; every parity file loads | done locally; CI waits for the pack release upload |
+| P1 | loaders, schemas, contract loader, expression reader | every JSON under `cases/` loads and round-trips | done |
+| P2 | Y-bus, bus map, fault admittances | Y-bus equal to PHPS within `1e-12` | done (bit-identical) |
+| P3 | Newton-Raphson power flow | voltages match PHPS and the case `v0`/`a0` within `1e-8` | PHPS part done (`4e-15`); `v0`/`a0` clause under review, see [TODO.md](TODO.md) |
+| P4 | components, active set first | `rhs`, outputs, injection, `H` and `∇H` match at 200 random states with both limiter branches exercised; contract identical | next |
+| P5 | assembly, DAE residual, sparsity | `f` and `g` match at 50 random states per case | |
+| P6 | initialisation | `x*` and `V*` match PHPS; DAE residual at most `1e-12` | |
+| P7 | simulation, events, results writer | bus-16 fault: BDF1 against BDF1, IDA against IDA, and the PowerFactory metrics | |
+| P8 | reports | figures regenerate from records alone | |
+| P9 | studies | recorded anchors reproduced: CCT, energy walls, frequency indices, Q-V margin `6.055 → 12.383 pu`, `D_r` | |
+| P10 | port-Hamiltonian audits | rank `54/171`, 41 positive eigenvalues, max `+12.882693`; IEEEG1 crossing at `1.934718 rad/s`; KYP infeasible on all nine sets | |
+| P11 | ROA certificate pipeline | `verified_valid_level = 2.69e-12` for both candidate `P`; centered decay at `5.16e-10`; all 83 contract clauses pass | |
+| P12 | Python wrappers; old pipeline retired | a fresh clone reproduces the parity suite with one command | |
 
 ### Part II: the modelling and stability programme (after parity)
 

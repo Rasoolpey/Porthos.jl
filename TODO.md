@@ -45,6 +45,12 @@ Last session: 2026-09-29. Phases P0 to P3 implemented; the test suite passes
 
 ## Environment on this machine
 
+One-command setup: `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 [-RunTests]`
+(juliaup, Julia 1.12 as a juliaup override for this directory, `Pkg.instantiate`, the parity
+pack, the generator venv from `parity/generate/requirements.txt`). Safe to re-run. It
+does not install a C++ compiler or SUNDIALS yet (see below); add them to the script when
+P7 needs them.
+
 - Julia 1.12.7 via juliaup (`winget` id 9NJNWW8PVKMN), default channel 1.12. `julia` is on
   PATH (WindowsApps alias).
 - `Project.toml` compat `julia = "1.12"`; `Manifest.toml` resolved with 1.12.7; CI runs
