@@ -237,6 +237,9 @@ src/ph/dissipativity.jl   MultiPortModel, open_loops_model (several loops at onc
                           port_margin, loop_margin, kyp_riccati (storage from the KYP Riccati
                           equation), port_storage, rest_storage
 scripts/joint_governor_storage.jl  joint storage at the governor ports (negative result)
+src/ph/terminal.jl        route A: sync_jacobian, TerminalModel / NetworkModel,
+                          terminal_models (the cut at the machine terminals), terminal_margins
+scripts/terminal_passivity.jl  route A test, per unit and per layer (negative result)
 parity/generate/sim.py    sim section: PHPS's compiled BDF1 / IDA runs (5 ms grid, binary)
 ext/                      PorthosMakieExt (CairoMakie), PorthosJuMPExt (JuMP): empty stubs
 parity/generate/generate_pack.py   pack generator (network, powerflow, records, components)
@@ -456,6 +459,27 @@ sym(PA) < 0 on the section, then the exact nonlinear dH/dt).
   paid on the network side.
 - Result if it works: a Lyapunov function that is a sum of per-machine energies plus the
   network potential; every term has a meaning (the PH picture of review comment 3).
+
+**Route A result (2026-09-29): fails with the incremental terminal power dV'dI.**
+`src/ph/terminal.jl` (`sync_jacobian`: the COI correction removed, synchronous frame;
+`terminal_models`: 11 units and the network with 19 loads from the exact Jacobian, every
+coupling outside the terminals checked absent; `terminal_margins`), `scripts/terminal_passivity.jl`.
+The cut is exact: units and network closed again give the 171 section eigenvalues to 1e-12
+plus the common rotation (0). But:
+- every unit is non-passive at its terminal, and so is the bare machine (Tm, Efd fixed):
+  at DC it is a constant-power source (the rotor angle adjusts until Pe = Tm), with an
+  indefinite Herm(Y(0)) (eigenvalues +-5.5 to +-26), and near its swing frequency
+  (6.9 to 11.3 rad/s, D = 0) it is non-passive too (-13.5 to -217);
+- the exciters make it much worse at DC (a high-gain AVR is a regulated voltage source):
+  -43 to -3422; the governors add almost nothing;
+- the network with its loads is non-passive at DC too (-18.5);
+- the whole cut: -3420 at DC. So synchronous machines are not incrementally passive in
+  (V, I) terms, whatever the controllers: a known fact, which is why the power-system
+  passivity literature uses other port pairs (frequency / active power, voltage magnitude /
+  reactive power).
+- Possible variant A' (not tried): the same physical units with polar ports (P, omega) and
+  (Q, |V|); the lossy network is then the obstacle at low frequency (skew part of the
+  synchronising matrix, seen in the governor test).
 
 **Route B: structure-search LMI (coupled storage). If A fails, or to diagnose it.**
 - One quadratic storage over all 171 section coordinates, V = z'Pz, P > 0,

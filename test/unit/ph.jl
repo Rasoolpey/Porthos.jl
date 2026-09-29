@@ -81,3 +81,39 @@ end
         @test maximum(minimum(abs.(l .- v)) for v in lam) <= 1e-10 * maximum(abs, lam)
     end
 end
+
+@testset "terminal cut (route A)" begin
+    sc = load_scenario(joinpath(ROOT, "cases", "IEEE39Bus_PF", "bus_fault_bus16_150ms.json"))
+    eq = solve_equilibrium(load_case(sc.system_path), sc)
+    sys, x, V = eq.sys, eq.x, eq.V
+    proj = physical_projection(sys, x, V)
+    units, net = terminal_models(sys, x, V; projection = proj)
+    @test length(units) == 11 && length(net.states) == 19
+    # close the units and the network through KCL: the section's eigenvalues plus the common
+    # rotation (0) of the synchronous frame
+    nb = nbus(sys)
+    pos = Dict(b => i for (i, b) in enumerate(sys.net.bus_ids))
+    nu = sum(length(u.states) for u in units)
+    n = nu + length(net.states)
+    Ax, Bv, Cx, Kv = zeros(n, n), zeros(n, 2nb), zeros(2nb, n), copy(net.D)
+    off = 0
+    for u in units
+        k = length(u.states)
+        r = off + 1:off + k
+        vb = 2pos[u.bus] - 1:2pos[u.bus]
+        Ax[r, r] .= u.A
+        Bv[r, vb] .= u.B
+        Cx[vb, r] .+= u.C
+        Kv[vb, vb] .-= u.D
+        off += k
+    end
+    rl = nu + 1:n
+    Ax[rl, rl] .= net.A
+    Bv[rl, :] .= net.B
+    Cx[:, rl] .-= net.C
+    lam = eigvals(Ax + Bv * (Kv \ Cx))
+    lsec = eigvals(proj.basis' * reduced_jacobian(sys, x, V)[proj.keep, proj.keep] * proj.basis)
+    @test length(lam) == length(lsec) + 1
+    @test maximum(minimum(abs.(lam .- l)) for l in lsec) <= 1e-10 * maximum(abs, lsec)
+    @test minimum(abs, lam) <= 1e-10 * maximum(abs, lsec)
+end
