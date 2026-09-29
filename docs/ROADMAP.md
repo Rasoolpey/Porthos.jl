@@ -375,6 +375,23 @@ Port in this order. Each has a gate that reproduces a recorded number or table.
   passivity tests (JuMP).
 - **Gate:** reproduce rank `54/171`, 41 positive eigenvalues and max `+12.882693`; IEEEG1
   `Re(-G(jw))` crossing at `1.934718 rad/s` and KYP infeasibility on all nine sets.
+- **Status (2026-09-29): the audit tools and the gate are done** (`src/ph/`,
+  `test/parity/p10_ph.jl`, pack v5):
+  - Porthos's audit uses the exact Jacobian of the network-reduced field (implicit
+    function theorem, ForwardDiff) instead of PHPS's central differences. It gives rank
+    54/171, 41 positive eigenvalues and max 12.882693018 (PHPS 12.882693020), and the exact
+    counterexamples along the top eigenvector to 1e-9.
+  - The governor ports are linearised from each component's own equations, not built by
+    hand, and match all nine IEEEG1 records to 1e-15.
+  - KYP infeasibility is certified in the frequency domain: a frequency with
+    `Re H(jw) < 0` makes the positive-real LMI infeasible. This is a theorem, stronger than
+    a solver status.
+  - `scripts/ph_audit.jl` runs the audits on any case at Porthos's own equilibrium. It also
+    reports the zeros of each governor port: IEEEG1 has relative degree 2 (never positive
+    real at that port); IEEEG3 has a zero at +1.333 (non-passive on 1.319 to 14.893 rad/s).
+  - Still open in P10: the port-residual audit (PHPS work package 1 item 3); the KYP / IQC
+    LMI solver in the JuMP extension, which comes with the storage search of Part II
+    (B2, B4).
 
 ### P11. ROA certificate pipeline
 Components:

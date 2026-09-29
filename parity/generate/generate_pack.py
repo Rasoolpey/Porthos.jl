@@ -10,7 +10,7 @@ The pack is built in sections, so later phases can extend it:
     network     Y-bus (power-flow and DAE variants), load admittances, Norton stamps,
                 fault shunts                                           (P2)
     powerflow   Newton-Raphson bus voltages and specifications         (P3)
-    records     certificate records copied unchanged from PHPS         (P11 targets)
+    records     certificate and PH-audit records copied unchanged      (P10, P11 targets)
     components  model kernels, outputs, H and grad H at random states and inputs, with
                 branch outcomes (see components.py)                    (P4)
     dae         PHPS's compiled DAE residual f, g at the equilibrium and at random states,
@@ -255,19 +255,27 @@ def section_powerflow(phps_root: Path, name: str, system_rel: str) -> dict:
     }
 
 
+# PH-audit records of the component models review (the P10 targets), from
+# study/pf_reference/model_review/.
+MODEL_REVIEW_RECORDS = ("audit_controller_kyp.json", "audit_governor_nonpassivity_exact.json")
+
+
 def section_records(phps_root: Path, out: Path) -> list:
-    """Copy the certificate records unchanged (the P11 targets)."""
-    src_dir = phps_root / "study" / "pf_reference" / "certificates"
+    """Copy records unchanged: every certificate record (the P11 targets, with the shifted-
+    storage audits of P10) and the model-review PH audits in MODEL_REVIEW_RECORDS (P10)."""
+    base = phps_root / "study" / "pf_reference"
+    sources = [("certificates", src) for src in sorted((base / "certificates").glob("*.json"))]
+    sources += [("model_review", base / "model_review" / name) for name in MODEL_REVIEW_RECORDS]
     copied = []
-    for src in sorted(src_dir.glob("*.json")):
-        dst = out / "records" / "certificates" / src.name
+    for sub, src in sources:
+        dst = out / "records" / sub / src.name
         dst.parent.mkdir(parents=True, exist_ok=True)
         # Take the committed blob, so the pack matches the recorded commit byte for byte.
         rel = src.relative_to(phps_root).as_posix()
         blob = subprocess.run(["git", "-C", str(phps_root), "show", f"HEAD:{rel}"],
                               check=True, capture_output=True).stdout
         dst.write_bytes(blob)
-        copied.append({"file": f"records/certificates/{src.name}", "phps_path": rel})
+        copied.append({"file": f"records/{sub}/{src.name}", "phps_path": rel})
     return copied
 
 

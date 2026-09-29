@@ -319,7 +319,7 @@ environment (pinned in [parity/generate/requirements.txt](parity/generate/requir
 On other systems: install Julia 1.12 (juliaup), then
 `julia --project -e "using Pkg; Pkg.instantiate()"`.
 
-## What works now (P0 to P7, synchronous-machine set)
+## What works now (P0 to P7 and P10, synchronous-machine set)
 
 Simulate a fault and plot it, in one command from the repository folder:
 
@@ -362,6 +362,26 @@ jacobian_pattern(eq.sys)              # structural sparsity, valid in every limi
 
 r = simulate_bdf1(eq.sys, vcat(eq.x, eq.V); dt = 5e-4, duration = 6.0, log_dt = 1e-3)
 simulate("cases/IEEE39Bus_PF/bus_fault_bus16_150ms.json")   # -> outputs/.../run.json
+```
+
+Compare with PowerFactory (2022 SP1 on the build machine; close its window first; see
+[pf/README.md](pf/README.md)):
+
+```
+julia --project=. scripts/pf_compare_fault.jl [scenario.json]
+```
+
+Audit the port-Hamiltonian storage and the controller ports at the equilibrium (P10):
+
+```
+julia --project=. scripts/ph_audit.jl [scenario.json]
+```
+
+```julia
+a = shifted_storage_audit(eq.sys, eq.x, eq.V)    # rank of Hess H, eig(sym(SA)), exact dH_s/dt
+A = reduced_jacobian(eq.sys, eq.x, eq.V)         # exact Jacobian of the network-reduced field
+m = port_model(gov, xg, ug; input = "omega", output = "Tm")   # any component, any port
+passivity_certificate(m), real_part_crossings(m), port_zeros(m)
 ```
 
 Tests: `julia --project test/runtests.jl`, or `scripts\setup.ps1 -RunTests`. The Y-bus

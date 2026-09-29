@@ -17,6 +17,7 @@ include("parity/common.jl")
         include("unit/components.jl")
         include("unit/assembly.jl")
         include("unit/powerfactory.jl")
+        include("unit/ph.jl")
     end
     @testset "parity" begin
         include("parity/p0_pack.jl")
@@ -27,5 +28,6 @@ include("parity/common.jl")
         include("parity/p5_dae.jl")
         include("parity/p6_init.jl")
         include("parity/p7_sim.jl")
+        include("parity/p10_ph.jl")
     end
 end

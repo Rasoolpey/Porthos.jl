@@ -17,6 +17,7 @@ import JLD2
 using Dates: Dates
 using Artifacts: Artifacts
 using SHA: SHA
+using Random: Random
 import JSON3
 import JSONSchema
 
@@ -63,6 +64,11 @@ include("sim/bdf1.jl")
 include("sim/ida.jl")
 include("sim/results.jl")
 
+# port-Hamiltonian audits
+include("ph/storage.jl")
+include("ph/audit.jl")
+include("ph/ports.jl")
+
 # PowerFactory interface (runs pf/, reads its results)
 include("io/powerfactory.jl")
 
@@ -99,6 +105,11 @@ export init_from_phasor, init_from_targets, MachineTargets, first_pass, solve_eq
 export DAEWorkspace, SimResult, simulate_bdf1, simulate_ida, consistent_voltages!,
        simulate, csv_columns, csv_row, write_results_csv, write_results_jld2, run_metadata,
        observable_names, observable_values!
+# port-Hamiltonian audits
+export storage_components, total_hamiltonian, grad_total_hamiltonian, hessian_total_hamiltonian,
+       solve_network, reduced_field, reduced_jacobian, PhysicalProjection, reservoir_states,
+       physical_projection, shifted_storage_audit, PortModel, port_model, transfer,
+       real_part_crossings, passivity_certificate, port_zeros
 # PowerFactory
 export PFResults, read_pf_results, pf_signal, pf_command, pf_simulate, pf_inspect,
        pf_machine_map, pf_compare

@@ -10,11 +10,15 @@ the base case, and P7's PHPS gates pass on the base case against parity pack v4
 left unsupported; see "Decided"). **New: the PowerFactory driver** (`pf/`, PowerFactory
 2022 SP1): model dump, RMS runs of Porthos scenarios, and a Julia comparison; Porthos
 matches PowerFactory on the base bus-16 fault more closely than PHPS's own record. The
-converters come after the P5 to P7 slice. The test suite passes (1460 tests, about 2 minutes: the P7 gate runs the full
+converters come after the P5 to P7 slice. The test suite passes (1613 tests, about 2.5 minutes: the P7 gate runs the full
 6 s BDF1); the only tests marked broken are the P5 and P6 converter cases.
 
-**Committed and pushed** on `master` (2026-09-29): everything up to and including this
-session's P6, P7, precompile workload and pack v4 binding.
+**Committed** on `master`: everything through P10. Pushed up to `6cde92f` (P7); the later
+commits (P7 closed, PowerFactory driver, P10) are not pushed yet. **Parity pack v5 is
+published** (release `parity-pack-v5`, sha256
+`e5c93ce896d8f9962d67f8cd7eee0acd133f5548e2061b5c4009f6e4182fd1a2`, tree hash
+`0248a827ea878355200936af668a1901621fa8c6`, both checked on the downloaded file), so
+pushing is safe for CI.
 
 ## Status by phase
 
@@ -29,7 +33,8 @@ session's P6, P7, precompile workload and pack v4 binding.
 | P5 assembly | done for base | Against PHPS's **compiled C++** `dae_residual` (the function IDA and BDF1 solve): f and g at the equilibrium bit-identical, at 50 random states fault off and on within 1.3e-14 (gate 1e-12; 1228 of 28100 values differ in the last bits, from sin/cos of different math libraries). Layout, wiring, Y-bus, loads, COI and faults identical. Structural Jacobian pattern checked against ForwardDiff. gfl, vsm, droop, voc: `@test_skip` until their models are ported. |
 | P6 initialisation | done for base | Residual at Porthos's equilibrium 2.7e-13 (gate 1e-12). Distance to PHPS's equilibrium 9.0e-10, within the allowance 7.2e-7 = `||J^+||` (67) times the residual at PHPS's point (1.07e-8, PHPS's own residual). All initialised parameters (Efd0, Tm0, Vref, Pref, PFD_REF, PM_REF, V0, Vini) within 8.4e-10 of PHPS's. The first pass reproduces PHPS's pre-refinement state within 1e-12. Converter cases pending. |
 | P7 simulation | done for base | Pack v4, `test/parity/p7_sim.jl`, all from PHPS's initialised state and parameters. **BDF1** vs PHPS's compiled BDF1: max 1.7e-11 over the whole 6 s (gate 1e-9), the same 268 non-converged steps, the first at the same time. **IDA at 1e-10** vs PHPS IDA at 1e-10: max 1.2e-7 before the first sliding mode (gate 1e-6), 4.1e-3 after it over 15 s (reported). The sliding-mode start comes from the pack: the first run of at least 10 consecutive non-converged BDF1 steps on one equation (IEEEG3_11.xp, 239 steps from 1.324 s; limiter crossings cost 1 to 3). **CSV**: header identical, the 20 complete rows (states and observables) within 2.5e-10 (gate 1e-9, chosen by the agent: the trajectory gate). **IDA production**: 1.7e-2 from PHPS's (reported; step sequences differ). PowerFactory item dropped and LineFault / rk4 unsupported (user decisions). |
-| P8 to P12 | not started | |
+| P10 PH audits | tools and gate done (base) | `src/ph/` (storage, reduced field and exact Jacobian, physical projection, shifted-storage audit, port models), `test/parity/p10_ph.jl` against pack v5, `scripts/ph_audit.jl`. Shifted storage at PHPS's point: rank 54/171, 41 positive eigenvalues of sym(SA), max 12.882693018 (PHPS 12.882693020, which differenced; Porthos's Jacobian is exact), min within 3.4e-10, exact counterexamples along the top eigenvector within 1e-9; held states = the ten IEEET1 `xr` (Tr = 0). Governor ports: all nine IEEEG1 at speed -> Tm match PHPS's KYP and exact-arithmetic records to 1e-15 (crossing 1.934717940050879 rad/s); KYP infeasibility certified in the frequency domain. Open: the port-residual audit; the LMI solver (JuMP extension) with the storage search. |
+| P8, P9, P11, P12 | not started | |
 
 ## Needs the user
 
@@ -47,6 +52,18 @@ session's P6, P7, precompile workload and pack v4 binding.
 
 ## Decided (2026-09-29)
 
+- **P10 audit tooling first** (user: "let's follow your next step"), before any model rework:
+  the tools judge every candidate storage. Findings beyond PHPS's records, from
+  `scripts/ph_audit.jl` on Porthos's own equilibrium: the IEEEG1 speed -> Tm port has all
+  zeros in the left half-plane; its non-passivity comes from relative degree 2 (6 poles, 4
+  zeros), so no parameter choice makes that port positive real. IEEEG3 has a zero at
+  +1.333 1/s and Re H < 0 on 1.3189 to 14.8932 rad/s (PHPS's letter: +1.33, 1.32 to 14.9).
+  **KYP infeasibility** is certified by a frequency with Re H(jw) < 0 (then the positive-real
+  LMI has no solution, a theorem), not by a solver status; the JuMP LMI solver comes with
+  the storage search. Parity pack v5 adds `records/model_review/audit_controller_kyp.json`
+  and `audit_governor_nonpassivity_exact.json` (generator: `MODEL_REVIEW_RECORDS`).
+- **Parity pack v5 published** (user approved), as v3 and v4: REST API with the stored git
+  credential, download checked against both bound hashes.
 - **PowerFactory driver** (user: build the PowerFactory tooling first, in Porthos, without
   copying PHPS_Opt's 102 MB `pf/` folder). `pf/` is a small Python package, standard
   library only, run with PowerFactory 2022 SP1's Python 3.10: `py -3.10 pf/run.py inspect`
@@ -206,6 +223,13 @@ src/io/powerfactory.jl    PowerFactory results reader, pf_simulate / pf_inspect 
 pf/                       PowerFactory driver (Python 3.10, stdlib): run.py, porthospf/
                           (session, inspect_model, simulate), config.json, README.md
 scripts/pf_compare_fault.jl  PowerFactory and Porthos on one scenario, compared (one command)
+src/ph/storage.jl         storage components, H / grad H / Hess H, solve_network, reduced_field,
+                          reduced_jacobian (exact: f_x - f_V g_V^-1 g_x)
+src/ph/audit.jl           PhysicalProjection (contract reservoirs, held states, COI section),
+                          shifted_storage_audit
+src/ph/ports.jl           PortModel (a component linearised at one port), transfer,
+                          real_part_crossings, passivity_certificate, port_zeros
+scripts/ph_audit.jl       the audits at Porthos's equilibrium, JSON report (one command)
 parity/generate/sim.py    sim section: PHPS's compiled BDF1 / IDA runs (5 ms grid, binary)
 ext/                      PorthosMakieExt (CairoMakie), PorthosJuMPExt (JuMP): empty stubs
 parity/generate/generate_pack.py   pack generator (network, powerflow, records, components)
@@ -213,7 +237,7 @@ parity/generate/components.py      components section: PHPS init, instrumented k
 parity/generate/dae.py             dae section: PHPS's C++ kernel compiled with a residual harness
 scripts/bind_parity_pack.jl        tarball + Artifacts.toml binding (hash taken from the tarball)
 scripts/setup.ps1                  one-command install
-test/unit/, test/parity/p0..p7     unit tests and the P0 to P7 gates (common.jl:
+test/unit/, test/parity/p0..p7, p10   unit tests and the P0 to P7 and P10 gates (common.jl:
                                    phps_init_params, phps_initial_state)
 ```
 
@@ -352,11 +376,14 @@ PowerFactory. The agent's proposal, **waiting for the user's answers**:
 - Remaining questions: (1) answered above;
   (2) what counts as validation for a reworked model? (3) do the physical choices match
   what the supervisor wants? (4) start the P10 audit tooling now?
-- Tooling that judges every candidate, in Porthos, before any redesign (P10): physical-state
-  projection, shifted-storage audit (Hessian and nullspace, sym(SA), exact nonlinear
-  dH_s/dt), port-residual audit, passivity indices and KYP per component (JuMP); gate:
-  reproduce PHPS's rank 54/171, 41 positive eigenvalues (max +12.882693) and the IEEEG1
-  crossing at 1.934718 rad/s.
+- P10 tooling: **done** (see the status table). Next, in this order: (a) the port-residual
+  audit (reconstruct each port's power independently and compare with grad H' f, grouped
+  by component and connection; PHPS work package 1 item 3); (b) the storage search that
+  keeps the dynamics (PHPS roadmap B1 to B3, B4 items 1 to 3): the network potential U_net,
+  then the structure-search LMI for controller and cross-term blocks (JuMP extension,
+  block-sparse), then joint machine-governor storage (passivity indices: IEEEG1 shortage
+  1.01 to 3.37 against the machine's excess at the same port). Every candidate is judged
+  by `shifted_storage_audit`. Ask the user about the method before (b).
 
 Software tools, as before:
 
