@@ -233,6 +233,10 @@ src/ph/ports.jl           PortModel (a component linearised at one port), transf
                           the system seen from one component, exact)
 scripts/ph_audit.jl       the audits at Porthos's equilibrium, JSON report (one command)
 scripts/governor_passivity.jl  governor shortage vs the rest's excess, per governor
+src/ph/dissipativity.jl   MultiPortModel, open_loops_model (several loops at once), multiport_margin,
+                          port_margin, loop_margin, kyp_riccati (storage from the KYP Riccati
+                          equation), port_storage, rest_storage
+scripts/joint_governor_storage.jl  joint storage at the governor ports (negative result)
 parity/generate/sim.py    sim section: PHPS's compiled BDF1 / IDA runs (5 ms grid, binary)
 ext/                      PorthosMakieExt (CairoMakie), PorthosJuMPExt (JuMP): empty stubs
 parity/generate/generate_pack.py   pack generator (network, powerflow, records, components)
@@ -396,6 +400,25 @@ PowerFactory. The agent's proposal, **waiting for the user's answers**:
   - IEEEG3_11 (hydro): the index test fails (nu = 50.7 against rho = 2.1), but the
     frequency-wise margin is positive at every frequency (+2.105, at infinity). A joint
     storage exists, but its split needs a frequency-dependent multiplier.
+- **Joint governor storage attempted (2026-09-29): it does not exist at the Tm ports.**
+  `scripts/joint_governor_storage.jl`, `src/ph/dissipativity.jl` (`open_loops_model`,
+  `multiport_margin`, `port_margin`, `loop_margin`, and exact Riccati storages
+  `kyp_riccati` / `port_storage` / `rest_storage`, no SDP). The eight governors that pass
+  one at a time fail together:
+  - constant split (rest pays n_k w^2): fails at 0.048 rad/s, the slow system-wide
+    frequency mode, for every eta scanned; without these governors the rest is too weakly
+    damped there.
+  - even the most generous frequency-wise diagonal split (each governor pays its own
+    Re H(jw)) fails: -0.0243 at 6.59 rad/s (-0.027 with all ten). So **no storage split port
+    by port at the governors' Tm ports exists, static or dynamic**. The individual passes
+    relied on the other governors being inside the rest.
+  - the rotor-plus-governor cut cannot help: every machine has D = 0 (as in PowerFactory,
+    dpu = 0), so the swing damping lives in the damper windings.
+  - at low frequency the lossy network makes the differential speed directions
+    non-passive, as Herm(K/jw) with K non-symmetric (the PES paper's path dependence of
+    U_net). The eta*Tm^2 supply term is the tool for that.
+  - **Next: route A first; if it does not work, route B** (user, 2026-09-29). See "Plan:
+    storage that keeps the dynamics" below.
 - P10 tooling: **done** (see the status table). Next, in this order: (a) the port-residual
   audit (reconstruct each port's power independently and compare with grad H' f, grouped
   by component and connection; PHPS work package 1 item 3); (b) the storage search that
@@ -404,6 +427,51 @@ PowerFactory. The agent's proposal, **waiting for the user's answers**:
   block-sparse), then joint machine-governor storage (passivity indices: IEEEG1 shortage
   1.01 to 3.37 against the machine's excess at the same port). Every candidate is judged
   by `shifted_storage_audit`. Ask the user about the method before (b).
+
+### Plan: storage that keeps the dynamics (A first, then B)
+
+Both routes look for a storage V, positive definite on the physical coordinates, with
+dV/dt <= 0 along the **unchanged** dynamics (PHPS parity and the PowerFactory match stay
+exact). Every candidate is judged by `shifted_storage_audit` and the P10 checks (P > 0 and
+sym(PA) < 0 on the section, then the exact nonlinear dH/dt).
+
+**Route A: cut at the machine terminals (physical units). Try first.**
+- Units: each machine with its own controllers (governor, and the exciter). The storage is
+  the machine's physical energy (rotor, fluxes, damper windings: the machines have D = 0,
+  so all swing damping is here) plus governor and exciter terms plus cross-terms *inside
+  the unit only*.
+- Port: the terminal power V*I (d and q), real electrical power, which cancels exactly at the
+  network. Each unit must satisfy the shifted dissipation inequality
+  dV_unit/dt <= (power delivered at its terminal), around the operating point.
+- Network: Y = N + D. The lossless part N gives the network potential U_net (restoring
+  energy for the rotor angles); D gives dissipation. The loads (constant-power parts) and the
+  line losses are handled on the network side (incremental supply for each load law).
+- Steps: (1) port model of a unit at its terminal (2-port, d and q, in the rotating frame;
+  the tools `port_model` / `open_loops_model` need a multi-input, multi-output version);
+  (2) frequency test per unit (is it dissipative at its terminal, and with what shortage or
+  excess?); (3) network side: N, D, loads; (4) the storages (Riccati, as for the governors)
+  and the joint check.
+- Expected risk: a unit may still fail at its terminal (watch GENROU_10 / IEEEG1_10, whose
+  rest was non-passive near 1.55 rad/s), and the constant-power loads and losses must be
+  paid on the network side.
+- Result if it works: a Lyapunov function that is a sum of per-machine energies plus the
+  network potential; every term has a meaning (the PH picture of review comment 3).
+
+**Route B: structure-search LMI (coupled storage). If A fails, or to diagnose it.**
+- One quadratic storage over all 171 section coordinates, V = z'Pz, P > 0,
+  A'P + PA <= -eps I. The trusted physical energy blocks (kinetic, magnetic) are fixed; the
+  controller blocks and cross-terms are free within an allowed pattern
+  (machine-governor, machine-exciter, network neighbours).
+- Objective: the sparsest set of cross-terms (weighted L1). The output lists which couplings
+  are needed and how strong, the direct answer to "what storage is missing". Full coupling
+  always has a solution (the local V_P that PHPS certified), so the information is the
+  sparsity.
+- Needs a block-sparse SDP (JuMP extension; PHPS's dense 342-dimensional SCS solve did not
+  finish in 25 min). Local and quadratic; the cross-terms are mathematical unless each gets
+  a physical derivation, then turned into nonlinear storage terms (roadmap B3).
+- Use with A: run B restricted to A's pattern (cross-terms only inside each machine unit,
+  plus U_net). Feasible: A works, and B gives the blocks to build. Infeasible: B shows which
+  extra coupling is missing.
 
 Software tools, as before:
 

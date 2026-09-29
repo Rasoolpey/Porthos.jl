@@ -43,3 +43,41 @@ end
     kg = findfirst(c -> Porthos.name(c) == "GENROU_4", sys.comps)
     @test_throws ErrorException loop_port_model(sys, x, V, kg; input = "Tm", output = "Pe", projection = proj)
 end
+
+@testset "storages by Riccati and multi-port loop opening" begin
+    # H = -G = 1/(s + 1) is passive: a storage with dV/dt <= u y + 0.1 u^2 exists
+    m = PortModel("g", ["x"], "u", "y", fill(-1.0, 1, 1), [1.0], [-1.0], 0.0)
+    P, res = port_storage(m, 0.1)
+    @test P[1, 1] > 0 && res <= 1e-10
+    @test port_margin(m, 0.1).passes
+    # -G = 2/(s + 1): Re(-G) + 0.05 > 0 at every frequency
+    @test port_margin(PortModel("b", ["x"], "u", "y", fill(-1.0, 1, 1), [1.0], [-2.0], 0.0), 0.05).passes
+    # -G = -2/(s + 1): Re(-G) + 0.5 < 0 at low frequency, so no storage exists
+    @test_throws ErrorException port_storage(PortModel("n", ["x"], "u", "y", fill(-1.0, 1, 1), [1.0], [2.0], 0.0), 0.5)
+
+    sc = load_scenario(joinpath(ROOT, "cases", "IEEE39Bus_PF", "bus_fault_bus16_150ms.json"))
+    eq = solve_equilibrium(load_case(sc.system_path), sc)
+    sys, x, V = eq.sys, eq.x, eq.V
+    proj = physical_projection(sys, x, V)
+    ks = [findfirst(c -> Porthos.name(c) == "IEEEG1_$i", sys.comps) for i in 2:4]
+    rest, ports, T = open_loops_model(sys, x, V, ks; input = "omega", output = "Tm", projection = proj)
+    @test size(rest.B, 2) == 3 && size(rest.C, 1) == 3
+    # closing the three loops again gives the full system; so does T' A T
+    nr = size(rest.A, 1)
+    blocks = [zeros(length(p.states), 0) for p in ports]
+    Acl = rest.A
+    for (j, p) in enumerate(ports)
+        nk = length(p.states)
+        top = hcat(Acl, zeros(size(Acl, 1), nk))
+        top[1:nr, end - nk + 1:end] .= rest.B[:, j] * p.C'
+        bottom = hcat(zeros(nk, size(Acl, 2)), p.A)
+        bottom[:, 1:nr] .= p.B * rest.C[j, :]'
+        Acl = vcat(top, bottom)
+    end
+    A = reduced_jacobian(sys, x, V)[proj.keep, proj.keep]
+    lam = eigvals(proj.basis' * A * proj.basis)
+    for M in (Acl, T' * A * T)
+        l = eigvals(M)
+        @test maximum(minimum(abs.(l .- v)) for v in lam) <= 1e-10 * maximum(abs, lam)
+    end
+end

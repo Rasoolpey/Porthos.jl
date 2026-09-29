@@ -68,6 +68,7 @@ include("sim/results.jl")
 include("ph/storage.jl")
 include("ph/audit.jl")
 include("ph/ports.jl")
+include("ph/dissipativity.jl")
 
 # PowerFactory interface (runs pf/, reads its results)
 include("io/powerfactory.jl")
@@ -110,7 +111,8 @@ export storage_components, total_hamiltonian, grad_total_hamiltonian, hessian_to
        solve_network, reduced_field, reduced_jacobian, PhysicalProjection, reservoir_states,
        physical_projection, shifted_storage_audit, PortModel, port_model, transfer,
        real_part_crossings, passivity_certificate, port_zeros, frequency_response,
-       loop_port_model
+       loop_port_model, MultiPortModel, open_loops_model, multiport_margin, kyp_riccati,
+       port_storage, rest_storage, port_margin, loop_margin
 # PowerFactory
 export PFResults, read_pf_results, pf_signal, pf_command, pf_simulate, pf_inspect,
        pf_machine_map, pf_compare
