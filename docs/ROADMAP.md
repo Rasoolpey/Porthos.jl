@@ -282,7 +282,11 @@ cases.
 
 ### P3. Power flow
 - Newton-Raphson with PV/PQ/slack handling and Q-limit options as in PHPS.
-- **Gate:** bus voltages match PHPS and the case `v0`/`a0` within `1e-8`.
+- **Gate:** bus voltages match PHPS within `1e-8`, and the case `v0` within `1e-6` and `a0`
+  within `2e-6` relative to the slack bus. (The case clause was `1e-8` for both until
+  2026-09-29; it cannot hold even for PHPS: the cases store PowerFactory voltages to 6
+  decimals, and the converter cases keep PowerFactory's angle reference, bus 31, while the
+  slack is bus 39.)
 
 ### P4. Components
 Port one type at a time, active set first:
@@ -323,9 +327,16 @@ For each type, implement `rhs!`, `outputs!`, `injection`, `initialize`, `hamilto
 - **Gate:** bus-16 fault trajectories:
   - BDF1 against PHPS BDF1: at most `1e-9` (same scheme, same Newton tolerance, same switching
     times, all taken from the parity pack);
-  - IDA against PHPS IDA, both at `rtol = atol = 1e-10`: at most `1e-6` over 15 s. At production
+  - IDA against PHPS IDA, both at `rtol = atol = 1e-10`: at most `1e-6` until the first
+    limiter enters a sliding mode, and reported (not gated) after it, over 15 s. At production
     tolerances the step sequences differ, so two IDA runs are not expected to agree that
-    closely;
+    closely. (Decided 2026-09-29: where a limiter chatters, e.g. the IEEEG3 pilot valve at
+    bus 30 from 1.3 s in the bus-16 fault, the IDA solution depends on step placement rather
+    than tolerance: Porthos at 1e-9 and at 1e-10 differ by 4e-2 there, and 1e-11 fails. The
+    BDF1 comparison stays exact through the whole event.) The gate takes the start of the
+    sliding mode from PHPS's BDF1 record in the pack: the first run of at least 10
+    consecutive steps whose Newton does not converge on the same equation (a limiter
+    crossing costs 1 to 3 such steps; the chattering pilot valve costs 239, from 1.324 s).
   - at production tolerances, against the PowerFactory references, with the same metrics and
     thresholds the current validation uses.
 

@@ -15,6 +15,7 @@ The pack is built in sections, so later phases can extend it:
                 branch outcomes (see components.py)                    (P4)
     dae         PHPS's compiled DAE residual f, g at the equilibrium and at random states,
                 fault off and on, with the system layout (see dae.py)  (P5, P6)
+    sim         PHPS's compiled BDF1 and IDA runs of the bus-16 fault (see sim.py)  (P7)
 
 A new or regenerated pack is a new baseline: it gets a new artifact hash and a written
 reason in parity/README.md.
@@ -66,7 +67,11 @@ PARITY_CASES = [
 # ba11ea1 cannot initialise it (coupled network solve does not converge at t = 0).
 DAE_CASES = ("base", "gfl", "vsm", "droop", "voc")
 
-SECTIONS = ("network", "powerflow", "records", "components", "dae")
+# Cases with reference simulations: the base case now; the converter cases follow with
+# their models (roadmap order of work).
+SIM_CASES = ("base",)
+
+SECTIONS = ("network", "powerflow", "records", "components", "dae", "sim")
 
 # PHPS paths whose modification would change the reference numbers. The generator refuses
 # to run if any of them is dirty; other dirty paths (documentation) are recorded.
@@ -319,6 +324,14 @@ def main() -> None:
             write_json(out / "dae" / f"{name}.json",
                        section_dae(phps_root, name, system_rel, scenario_rel, 20260930 + k))
             print(f"  dae: {name} done", file=sys.stderr)
+
+    if "sim" in sections:
+        from sim import section_sim
+        for name, system_rel, scenario_rel in PARITY_CASES:
+            if name not in SIM_CASES:
+                continue
+            section_sim(phps_root, name, system_rel, scenario_rel, out)
+            print(f"  sim: {name} done", file=sys.stderr)
 
     if "components" in sections:
         from components import section_components

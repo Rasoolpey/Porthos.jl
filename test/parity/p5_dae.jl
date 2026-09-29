@@ -45,20 +45,9 @@ end
             end
 
             # initialisation parameters from PHPS, and nothing else
-            init = Dict{String,Dict{String,Float64}}()
-            for c in d[:components]
-                nm = string(c[:name])
-                ours = build_component(case, component(case, nm))
-                diff = Dict{String,Float64}()
-                for (k, v) in c[:params]
-                    key = string(k)
-                    pd = param_dict(ours)
-                    if !haskey(pd, key) || !(pd[key] isa Real) || Float64(pd[key]) !== Float64(v)
-                        diff[key] = Float64(v)
-                    end
-                end
+            init = phps_init_params(case, d)
+            for diff in values(init)
                 @test issubset(keys(diff), INIT_SET_KEYS)
-                init[nm] = diff
             end
             sys = assemble(case, sc; init_params = init)
 

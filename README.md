@@ -4,10 +4,12 @@
 written entirely in Julia, where the same model code runs both the simulation and the proofs.
 
 > **Status: pre-alpha (2026-09-29).** Phases P0 to P3, the synchronous-machine part of P4,
-> and P5 on the IEEE-39 base case are implemented: loaders, parity pack, Y-bus, power flow,
-> the GENROU, GENSAL, IEEET1, IEEEG1, IEEEG3 and COMPLEXLOAD models, and the assembled DAE
-> residual, all matching PHPS (the residual against PHPS's compiled C++). Initialisation and
-> simulation (P6, P7) are next; the usage examples below show the planned API. The plan is in
+> and P5 and P6 on the IEEE-39 base case are implemented: loaders, parity pack, Y-bus, power
+> flow, the GENROU, GENSAL, IEEET1, IEEEG1, IEEEG3 and COMPLEXLOAD models, the assembled DAE
+> residual and the equilibrium, all matching PHPS (the residual against PHPS's compiled C++).
+> Simulation (P7) works on the base case: fixed-step BDF1 (matching PHPS's compiled BDF1 to
+> `2e-11`) and SUNDIALS IDA, with PHPS-compatible `simulation_results.csv` and `run.json`;
+> its gate tests are next. The plan is in
 > [docs/ROADMAP.md](docs/ROADMAP.md) and the current state in [TODO.md](TODO.md).
 
 ---
@@ -317,7 +319,23 @@ environment (pinned in [parity/generate/requirements.txt](parity/generate/requir
 On other systems: install Julia 1.12 (juliaup), then
 `julia --project -e "using Pkg; Pkg.instantiate()"`.
 
-## What works now (P0 to P5, synchronous-machine set)
+## What works now (P0 to P7, synchronous-machine set)
+
+Simulate a fault and plot it, in one command from the repository folder:
+
+```
+julia --project=. scripts/run_base_fault.jl
+```
+
+It runs the IEEE-39 base case with a three-phase fault at bus 16 (1.00 to 1.15 s) with
+BDF1 and IDA, writes `simulation_results.csv`, `simulation_results.jld2` and `run.json` to
+`outputs/IEEE39Bus_PF_base_bus16_150ms_bdf1/` and `..._ida/`, and figures to
+`outputs/figures/`. BDF1 (PHPS's fixed-step scheme) takes about 80 s for the 6 s run, IDA
+about 5 s. The simulation code is compiled once, when Porthos is precompiled (about 20 s,
+after installing or changing the source), and cached, so a new Julia process starts
+simulating after about 2 s. The first run also installs CairoMakie.
+
+From Julia:
 
 ```julia
 using Porthos
@@ -337,9 +355,13 @@ x = [0.6, 1.0, 1.0, 0.95, 0.2, -0.3]; u = [0.9, 0.3, 5.0, 2.2]  # states; Vd, Vq
 rhs!(zeros(6), gen, x, u)             # generic in the number type, allocation-free
 modes(build_component(case, component(case, "IEEEG1_2")), ones(7), [1.0, 2.0, 0.0])
 
-sys = assemble(case, sc)              # the DAE: 203 states, 39 buses, the bus-16 fault
-f, g = dae_residual(sys, x0, V0; faults_on = true)   # x' = f(x, V), 0 = g(x, V) (KCL)
-jacobian_pattern(sys)                 # structural sparsity, valid in every limiter mode
+eq = solve_equilibrium(case, sc)      # power flow -> initialisation -> Newton on the DAE
+eq.residual                           # ~3e-13 at (eq.x, eq.V)
+f, g = dae_residual(eq.sys, eq.x, eq.V; faults_on = true)   # x' = f(x, V), 0 = g(x, V)
+jacobian_pattern(eq.sys)              # structural sparsity, valid in every limiter mode
+
+r = simulate_bdf1(eq.sys, vcat(eq.x, eq.V); dt = 5e-4, duration = 6.0, log_dt = 1e-3)
+simulate("cases/IEEE39Bus_PF/bus_fault_bus16_150ms.json")   # -> outputs/.../run.json
 ```
 
 Tests: `julia --project test/runtests.jl`, or `scripts\setup.ps1 -RunTests`. The Y-bus
@@ -397,11 +419,11 @@ The full plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
 | P0 | environment, pinned dependencies, parity pack import | CI runs; every parity file loads | done locally; CI waits for the pack release upload |
 | P1 | loaders, schemas, contract loader, expression reader | every JSON under `cases/` loads and round-trips | done |
 | P2 | Y-bus, bus map, fault admittances | Y-bus equal to PHPS within `1e-12` | done (bit-identical) |
-| P3 | Newton-Raphson power flow | voltages match PHPS and the case `v0`/`a0` within `1e-8` | PHPS part done (`4e-15`); `v0`/`a0` clause under review, see [TODO.md](TODO.md) |
+| P3 | Newton-Raphson power flow | voltages match PHPS within `1e-8`, the case `v0` within `1e-6` and `a0` within `2e-6` (relative to the slack) | done (`4e-15` from PHPS) |
 | P4 | components, active set first | `rhs`, outputs, injection, `H` and `∇H` match at 200 random states with both limiter branches exercised; contract identical | synchronous-machine set done; converters after P7 |
 | P5 | assembly, DAE residual, sparsity | `f` and `g` match at 50 random states per case | base case done; converter cases after their models |
-| P6 | initialisation | `x*` and `V*` match PHPS; DAE residual at most `1e-12` | next |
-| P7 | simulation, events, results writer | bus-16 fault: BDF1 against BDF1, IDA against IDA, and the PowerFactory metrics | |
+| P6 | initialisation | `x*` and `V*` match PHPS; DAE residual at most `1e-12` | base case done |
+| P7 | simulation, events, results writer | bus-16 fault: BDF1 against BDF1, IDA against IDA (until a limiter slides), and the PowerFactory metrics | in progress: BDF1 `1.7e-11`, IDA `1.2e-7` before the limiter window; tests and PowerFactory next |
 | P8 | reports | figures regenerate from records alone | |
 | P9 | studies | recorded anchors reproduced: CCT, energy walls, frequency indices, Q-V margin `6.055 → 12.383 pu`, `D_r` | |
 | P10 | port-Hamiltonian audits | rank `54/171`, 41 positive eigenvalues, max `+12.882693`; IEEEG1 crossing at `1.934718 rad/s`; KYP infeasible on all nine sets | |

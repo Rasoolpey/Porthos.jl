@@ -175,7 +175,7 @@ end
 
 # -- residual ---------------------------------------------------------------------------
 
-@inline function _input(s::InputSource, T, Vd, Vq, x, sys::DAESystem, outs)
+@inline function _input(s::InputSource, ::Type{T}, Vd, Vq, x, sys::DAESystem, outs) where {T}
     k = s.kind
     k === SRC_ZERO && return zero(T)
     k === SRC_CONST && return T(s.value)
@@ -191,7 +191,7 @@ end
     return T(Vd[i] * cos(d) + Vq[i] * sin(d))
 end
 
-function _gather!(u, k::Int, T, Vd, Vq, x, sys::DAESystem, outs)
+function _gather!(u, k::Int, ::Type{T}, Vd, Vq, x, sys::DAESystem, outs) where {T}
     for (j, s) in enumerate(sys.sources[k])
         u[j] = _input(s, T, Vd, Vq, x, sys, outs)
     end
@@ -199,30 +199,55 @@ function _gather!(u, k::Int, T, Vd, Vq, x, sys::DAESystem, outs)
 end
 
 """
-    dae_residual!(f, g, sys, x, V; faults_on = false, t = 0.0) -> (f, g)
+    DAEWorkspace(sys, T = Float64)
 
-`f = x'` (differential right-hand side, length `n_diff`) and the algebraic residual `g`
-(length `2 nbus`, `[KCL_d, KCL_q]` per bus) at states `x` and bus voltages
-`V = [Vd_1, Vq_1, ...]`. With `faults_on`, every fault shunt of the scenario is applied.
-PHPS's residual is `[x' - f; g]`.
+Buffers for evaluating the residual of `sys` with element type `T` without allocating.
 """
-function dae_residual!(f, g, sys::DAESystem, x, V; faults_on::Bool = false, t::Real = 0.0)
-    T = promote_type(eltype(x), eltype(V))
+struct DAEWorkspace{T}
+    ranges::Vector{UnitRange{Int}}      # state range of each component
+    Vd::Vector{T}
+    Vq::Vector{T}
+    outs::Vector{Vector{T}}
+    ins::Vector{Vector{T}}
+    Id_inj::Vector{T}
+    Iq_inj::Vector{T}
+    Yf_g::Vector{Float64}
+    Yf_b::Vector{Float64}
+end
+
+function DAEWorkspace(sys::DAESystem, ::Type{T} = Float64) where {T}
     nb = nbus(sys)
-    Vd = [V[2i - 1] for i in 1:nb]
-    Vq = [V[2i] for i in 1:nb]
+    ranges = [sys.offsets[k]:(sys.offsets[k] + nstates(c) - 1) for (k, c) in enumerate(sys.comps)]
+    DAEWorkspace{T}(ranges, zeros(T, nb), zeros(T, nb), [zeros(T, noutputs(c)) for c in sys.comps],
+                    [zeros(T, ninputs(c)) for c in sys.comps], zeros(T, nb), zeros(T, nb),
+                    zeros(nb), zeros(nb))
+end
+
+"""
+    dae_residual!(f, g, sys, ws::DAEWorkspace, x, V, fault_active) -> (f, g)
+
+Allocation-free form: `fault_active[k]` switches the k-th fault shunt of `sys.faults`.
+"""
+function dae_residual!(f, g, sys::DAESystem, ws::DAEWorkspace{T}, x, V,
+                       fault_active::AbstractVector{Bool}) where {T}
+    nb = nbus(sys)
+    Vd, Vq = ws.Vd, ws.Vq
+    for i in 1:nb
+        Vd[i] = V[2i - 1]
+        Vq[i] = V[2i]
+    end
     comps = sys.comps
-    outs = [zeros(T, noutputs(c)) for c in comps]
-    ins = [zeros(T, ninputs(c)) for c in comps]
-    Id_inj = zeros(T, nb)
-    Iq_inj = zeros(T, nb)
+    outs, ins = ws.outs, ws.ins
+    Id_inj, Iq_inj = ws.Id_inj, ws.Iq_inj
+    fill!(Id_inj, zero(T))
+    fill!(Iq_inj, zero(T))
 
     # 1. outputs and injections
-    for (k, c) in enumerate(comps)
-        o = sys.offsets[k]
-        xc = view(x, o:o + nstates(c) - 1)
+    for k in eachindex(comps)
+        c = comps[k]
+        xc = view(x, ws.ranges[k])
         _gather!(ins[k], k, T, Vd, Vq, x, sys, outs)
-        _outputs!(outs[k], c, xc, ins[k], params(c), NoModes())
+        _outputs_any!(outs[k], c, xc, ins[k], NoModes())
         b, jd, jq = sys.inj[k]
         if b > 0
             Id_inj[b] += outs[k][jd]
@@ -230,12 +255,11 @@ function dae_residual!(f, g, sys::DAESystem, x, V; faults_on::Bool = false, t::R
         end
     end
     # 2. dynamics
-    for (k, c) in enumerate(comps)
-        o = sys.offsets[k]
-        n = nstates(c)
-        xc = view(x, o:o + n - 1)
+    for k in eachindex(comps)
+        c = comps[k]
+        r = ws.ranges[k]
         _gather!(ins[k], k, T, Vd, Vq, x, sys, outs)
-        _step!(view(f, o:o + n - 1), outs[k], c, xc, ins[k], params(c), NoModes())
+        _step_any!(view(f, r), outs[k], c, view(x, r), ins[k], NoModes())
     end
     # 3. centre-of-inertia frame
     m = sys.coi_members
@@ -254,15 +278,17 @@ function dae_residual!(f, g, sys::DAESystem, x, V; faults_on::Bool = false, t::R
         f[sys.delta_coi] = zero(T)
     end
     # 4. KCL
-    Yf_g = zeros(nb)
-    Yf_b = zeros(nb)
-    if faults_on
-        for fs in sys.faults
+    Yf_g, Yf_b = ws.Yf_g, ws.Yf_b
+    fill!(Yf_g, 0.0)
+    fill!(Yf_b, 0.0)
+    for (q, fs) in enumerate(sys.faults)
+        if fault_active[q]
             Yf_g[fs.index] += fs.g
             Yf_b[fs.index] += fs.b
         end
     end
     la = sys.load
+    G, B = sys.G, sys.B
     for i in 1:nb
         if sys.slack[i]
             g[2i - 1] = Vd[i] - sys.Vd_ref[i]
@@ -272,8 +298,8 @@ function dae_residual!(f, g, sys::DAESystem, x, V; faults_on::Bool = false, t::R
         Id_ybus = zero(T)
         Iq_ybus = zero(T)
         for j in 1:nb
-            Gij = sys.G[i, j]
-            Bij = sys.B[i, j]
+            Gij = G[i, j]
+            Bij = B[i, j]
             Id_ybus += Gij * Vd[j] - Bij * Vq[j]
             Iq_ybus += Gij * Vq[j] + Bij * Vd[j]
         end
@@ -290,6 +316,20 @@ function dae_residual!(f, g, sys::DAESystem, x, V; faults_on::Bool = false, t::R
         g[2i] = Iq_inj[i] - Iq_ybus
     end
     return f, g
+end
+
+"""
+    dae_residual!(f, g, sys, x, V; faults_on = false) -> (f, g)
+
+`f = x'` (differential right-hand side, length `n_diff`) and the algebraic residual `g`
+(length `2 nbus`, `[KCL_d, KCL_q]` per bus) at states `x` and bus voltages
+`V = [Vd_1, Vq_1, ...]`. With `faults_on`, every fault shunt of the scenario is applied.
+PHPS's residual is `[x' - f; g]`.
+"""
+function dae_residual!(f, g, sys::DAESystem, x, V; faults_on::Bool = false, t::Real = 0.0)
+    T = promote_type(eltype(x), eltype(V))
+    return dae_residual!(f, g, sys, DAEWorkspace(sys, T), x, V,
+                         fill(faults_on, length(sys.faults)))
 end
 
 """

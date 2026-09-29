@@ -127,6 +127,23 @@ function pack_matrix(obj)
 end
 
 """
+    pack_binary(pack, relpath, (rows, cols)) -> Matrix{Float64}
+
+A little-endian float64 array stored row-major (the `sim` section's `.bin` files: one row
+per time, one column per signal), returned as a `rows x cols` matrix.
+"""
+function pack_binary(pack::ParityPack, rel::AbstractString, dims::Tuple{Integer,Integer})
+    haskey(pack.manifest[:files], Symbol(rel)) ||
+        throw(ParityPackError("$rel is not in the parity pack"))
+    rows, cols = dims
+    raw = read(joinpath(pack.dir, rel))
+    length(raw) == 8 * rows * cols ||
+        throw(ParityPackError("$rel has $(length(raw)) bytes, expected 8 x $rows x $cols"))
+    v = ltoh.(reinterpret(Float64, raw))
+    return permutedims(reshape(v, cols, rows))
+end
+
+"""
     pack_vector(obj) -> Vector{Float64}
 """
 pack_vector(obj) = Float64[Float64(v) for v in obj]

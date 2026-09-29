@@ -26,3 +26,31 @@ bitdiff(A::AbstractArray{Float64}, B::AbstractArray{Float64}) =
     count(i -> reinterpret(UInt64, A[i]) != reinterpret(UInt64, B[i]), eachindex(A, B))
 
 case_path(rel) = joinpath(ROOT, "cases", rel)
+
+"""
+    phps_init_params(case, d) -> Dict(component name => Dict(param => value))
+
+The parameters of the pack's `dae` record `d` that differ from Porthos's own processing of
+the case: those PHPS's initialisation sets (the P5 gate checks that nothing else differs).
+"""
+function phps_init_params(case, d)
+    init = Dict{String,Dict{String,Float64}}()
+    for c in d[:components]
+        nm = string(c[:name])
+        pd = param_dict(build_component(case, component(case, nm)))
+        diff = Dict{String,Float64}()
+        for (k, v) in c[:params]
+            key = string(k)
+            if !haskey(pd, key) || !(pd[key] isa Real) || Float64(pd[key]) !== Float64(v)
+                diff[key] = Float64(v)
+            end
+        end
+        init[nm] = diff
+    end
+    return init
+end
+
+"""PHPS's initialised state `[x; Vd_1, Vq_1, ...]` from the pack's `dae` record `d`."""
+phps_initial_state(d) =
+    vcat(Float64.(d[:equilibrium][:x]),
+         vec(permutedims(hcat(Float64.(d[:equilibrium][:Vd]), Float64.(d[:equilibrium][:Vq])))))

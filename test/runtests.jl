@@ -1,6 +1,8 @@
 using Porthos
 using Test
 using SparseArrays
+using LinearAlgebra
+using ForwardDiff
 
 const ROOT = normpath(joinpath(@__DIR__, ".."))
 
@@ -22,5 +24,7 @@ include("parity/common.jl")
         include("parity/p3_powerflow.jl")
         include("parity/p4_components.jl")
         include("parity/p5_dae.jl")
+        include("parity/p6_init.jl")
+        include("parity/p7_sim.jl")
     end
 end

@@ -10,6 +10,11 @@ module Porthos
 using LinearAlgebra
 using SparseArrays
 using Printf: Printf
+using ForwardDiff: ForwardDiff
+import SciMLBase
+import Sundials
+import JLD2
+using Dates: Dates
 using Artifacts: Artifacts
 using SHA: SHA
 import JSON3
@@ -41,11 +46,25 @@ include("components/exciters/ieeet1.jl")
 include("components/governors/ieeeg1.jl")
 include("components/governors/ieeeg3.jl")
 include("components/loads/complexload.jl")
+include("components/dispatch.jl")
+include("components/observables.jl")
 
 # assembly
 include("assembly/wiring.jl")
 include("assembly/dae.jl")
 include("assembly/sparsity.jl")
+
+# initialisation
+include("init/components.jl")
+include("init/equilibrium.jl")
+
+# simulation
+include("sim/bdf1.jl")
+include("sim/ida.jl")
+include("sim/results.jl")
+
+# cached compilation of the simulation path
+include("precompile.jl")
 
 # io
 export parse_param_expr, param_value
@@ -70,6 +89,13 @@ export NoModes, ModeLog, UndecidedBranch, component_role
 # assembly
 export DAESystem, assemble, dae_residual!, dae_residual, nalg, resolve_wiring, InputSource,
        jacobian_pattern
+# initialisation
+export init_from_phasor, init_from_targets, MachineTargets, first_pass, solve_equilibrium,
+       EquilibriumResult, component_io
+# simulation
+export DAEWorkspace, SimResult, simulate_bdf1, simulate_ida, consistent_voltages!,
+       simulate, csv_columns, csv_row, write_results_csv, write_results_jld2, run_metadata,
+       observable_names, observable_values!
 # power flow
 export solve_powerflow, PowerFlowSpec, PowerFlowResult, bus_power, BusType, PQ_BUS, PV_BUS,
        SLACK_BUS

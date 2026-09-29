@@ -3,62 +3,114 @@
 Read this first in a new session, then `AGENTS.md` and `docs/ROADMAP.md`. Updated at the
 end of every session.
 
-Last session: 2026-09-29. P0 to P3 are done. P4 is done for the synchronous-machine set
-(GENROU, GENSAL, IEEET1, IEEEG1, IEEEG3, COMPLEXLOAD) and P5 for the base case; the
-converters come after the P5 to P7 slice. The test suite passes (`1313 pass, 10 broken`:
-6 are the open P3 question below, 4 are the P5 converter cases, pending their models).
+Last session: 2026-09-29 (second session that day). P0 to P3 are done. P4 is done for the
+synchronous-machine set (GENROU, GENSAL, IEEET1, IEEEG1, IEEEG3, COMPLEXLOAD), P5 and P6 for
+the base case, and P7's PHPS gates pass on the base case against parity pack v4
+(published). Open in P7: the PowerFactory comparison (waits for the user to re-record
+the PF traces) and the LineFault / rk4 decision (see "Needs the user"). The converters
+come after the P5 to P7 slice. The test suite passes (1460 tests, about 2 minutes: the P7 gate runs the full
+6 s BDF1); the only tests marked broken are the P5 and P6 converter cases.
+
+**Committed and pushed** on `master` (2026-09-29): everything up to and including this
+session's P6, P7, precompile workload and pack v4 binding.
 
 ## Status by phase
 
 | Phase | State | Gate |
 |---|---|---|
-| P0 environment + parity pack | done locally | Pack v2 loads and every hash checks locally. **CI cannot fetch the pack until the tarball is uploaded** (see "Needs the user"). |
+| P0 environment + parity pack | done | Pack v4 is bound and published (release `parity-pack-v4`); it loads and every hash checks, locally and from the download. |
 | P1 input / output | done | All 60 JSON under `cases/` load, validate and round-trip; all 200 PHPS case files also load (optional test, runs when PHPS_Opt is present). |
 | P2 network | done | Y-bus (power-flow and DAE), load admittances, Norton stamps and fault shunts equal PHPS **bit for bit** on all 6 parity cases (gate asks for 1e-12). |
-| P3 power flow | done, one clause open | `V`/`theta` match PHPS within 4e-15 (gate 1e-8), same iteration counts. The "case v0/a0 within 1e-8" clause cannot hold (below); marked `@test_broken`, not loosened. |
+| P3 power flow | done | `V`/`theta` match PHPS within 4e-15 (gate 1e-8), same iteration counts; the case `v0`/`a0` within 1e-6 / 2e-6 relative to the slack (gate as reworded, see "Decided"). |
 | P4 components, items 1 to 3 | done | GENROU_PHTRUE, GENSAL_PHTRUE, IEEET1_PHTRUE, IEEEG1_PHTRUE, IEEEG3_PHTRUE, COMPLEXLOAD: at 200 samples each, all 43 state-dependent branch sites agree with PHPS and each goes both ways; rhs, both output sets, injection, H and grad H within rtol 1e-12 (rhs bit-identical at 1190 of 1200 samples); parameters identical to PHPS's; contract entry identical. `rhs!` / `outputs!` are type-stable and allocation-free; ForwardDiff Jacobians checked. |
 | P4 items 4 and 5 (converters) | after P7 | per the roadmap order of work |
 | P5 assembly | done for base | Against PHPS's **compiled C++** `dae_residual` (the function IDA and BDF1 solve): f and g at the equilibrium bit-identical, at 50 random states fault off and on within 1.3e-14 (gate 1e-12; 1228 of 28100 values differ in the last bits, from sin/cos of different math libraries). Layout, wiring, Y-bus, loads, COI and faults identical. Structural Jacobian pattern checked against ForwardDiff. gfl, vsm, droop, voc: `@test_skip` until their models are ported. |
-| P6 initialisation | next | |
-| P7 to P12 | not started | |
+| P6 initialisation | done for base | Residual at Porthos's equilibrium 2.7e-13 (gate 1e-12). Distance to PHPS's equilibrium 9.0e-10, within the allowance 7.2e-7 = `||J^+||` (67) times the residual at PHPS's point (1.07e-8, PHPS's own residual). All initialised parameters (Efd0, Tm0, Vref, Pref, PFD_REF, PM_REF, V0, Vini) within 8.4e-10 of PHPS's. The first pass reproduces PHPS's pre-refinement state within 1e-12. Converter cases pending. |
+| P7 simulation | PHPS gates pass, base case | Pack v4, `test/parity/p7_sim.jl`, all from PHPS's initialised state and parameters. **BDF1** vs PHPS's compiled BDF1: max 1.7e-11 over the whole 6 s (gate 1e-9), the same 268 non-converged steps, the first at the same time. **IDA at 1e-10** vs PHPS IDA at 1e-10: max 1.2e-7 before the first sliding mode (gate 1e-6), 4.1e-3 after it over 15 s (reported). The sliding-mode start comes from the pack: the first run of at least 10 consecutive non-converged BDF1 steps on one equation (IEEEG3_11.xp, 239 steps from 1.324 s; limiter crossings cost 1 to 3). **CSV**: header identical, the 20 complete rows (states and observables) within 2.5e-10 (gate 1e-9, chosen by the agent: the trajectory gate). **IDA production**: 1.7e-2 from PHPS's (reported; step sequences differ). Not done: PowerFactory comparison and the LineFault / rk4 decision (need the user). |
+| P8 to P12 | not started | |
 
 ## Needs the user
 
-1. **Upload pack v3** (outward-facing, so not done by the agent): create the GitHub release
-   `parity-pack-v3` on Rasoolpey/Porthos.jl and attach `parity/dist/parity_pack-v3.tar.gz`
-   (sha256 `b2ceaed1c8b44ed95b1180fc33e2a771b5463f1d08b8c4c91729cb32e335398e`, bound in
-   `Artifacts.toml`). Until then CI fails at the parity gates. The tarball is git-ignored
-   and must not be regenerated before upload: `archive_artifact` output is not
-   byte-reproducible, and `Artifacts.toml` binds this exact file. (Packs v1 and v2 were
-   superseded before they were uploaded; nothing to do for them.)
-2. **GFL-ZIF has no PHPS DAE reference.** PHPS at ba11ea1 cannot initialise any of the three
-   GFL-ZIF system files (`DiracRunner.build`: "coupled network solve did not converge at
-   t=0, max |KCL| 5.7e-3 after 40 iterations"). GFL-ZIF is not one of the roadmap's P5 to P7
-   parity cases, so those gates are unaffected, but `GFL_ZIF_PHTRUE` is in the P4 active set
-   and its component samples come from an initialised case. Options: fix the case or the
-   model in PHPS (a new PHPS commit, then a new pack), sample GFL_ZIF_PHTRUE on another case,
-   or drop it from the active set.
-3. **P3 gate wording** (AGENTS.md: "if a gate looks wrong, explain why and ask"). "Bus
-   voltages match ... the case v0/a0 within 1e-8" cannot hold, even for PHPS:
-   - the cases store PowerFactory voltages to 6 decimals, so PHPS differs by up to
-     4.6e-7 in magnitude and 8.6e-7 rad in angle on the base case;
-   - in the five converter cases, `a0` keeps PowerFactory's angle reference (bus 31 = 0)
-     but the slack is bus 39 with `a0 = 0`, a uniform shift of 0.1755 rad.
-
-   Suggested wording: "match PHPS within 1e-8; match the case v0 within 1e-6, and a0 within
-   2e-6 relative to the slack bus". The test suite already checks this as a supplementary
-   test; the literal clause stays `@test_broken` until the roadmap is changed.
-4. **Clarabel** is left out of the JuMP extension. Clarabel pins TimerOutputs 0.5, and the
+1. **Clarabel** is left out of the JuMP extension. Clarabel pins TimerOutputs 0.5, and the
    SciML stack (NonlinearSolveBase via Sundials and NonlinearSolve) needs TimerOutputs 1.x,
    so they cannot resolve together. SCS and COSMO are in. Revisit when Clarabel updates, or
    decide whether it matters for P10 and II.1.
-5. **PHPS Hamiltonian at 50 Hz** (for information, no parity case affected): PHPS's
+2. **PHPS Hamiltonian at 50 Hz** (for information, no parity case affected): PHPS's
    `hamiltonian` / `grad_hamiltonian` for GENROU and GENSAL compute the base frequency as
    `2*pi*params.get('fn', 60)`, but machine params never contain `fn`, so they use 60 Hz
    even in a 50 Hz case. Porthos uses the machine's `omega_b`, which is the same number at
    60 Hz (all parity cases) and the correct one at 50 Hz.
-6. Commit when you are ready (the agent does not commit without being asked). Work is on
-   branch `p0-p3-io-network-powerflow`.
+3. The P6 check of the initialised parameters uses an absolute tolerance of 1e-8 chosen by
+   the agent (the roadmap gives none); the actual differences are below 8.4e-10.
+4. **Re-record the PowerFactory traces (P7, third gate item).** Decided: see "Decided". The raw PF
+   RMS traces the PHPS comparison used (`study/pf_reference/rms/BASE_fault_bus16_{150,170}ms.csv`)
+   are not in PHPS_Opt; the run records point at an old checkout
+   (`Documents\PHPS\PHPS_Opt`) that no longer exists. The recorded PHPS-vs-PF numbers
+   (`model_review/pf_compare/pf_compare_bus16_v4_x1e-5.json`) are for PHPS at `ad59566`;
+   between it and `ba11ea1` the PHTRUE models (all but GENROU), `dae_runner`,
+   `dae_compiler` and the case file changed. PHPS's thresholds there are relative (a new
+   kernel no worse than the old one against PF: RMS <= 1.05 x old + floors of 1e-5 pu speed,
+   0.05 deg angle, 1e-3 pu P; G10 strictly no worse), not absolute. The re-recording script
+   (`pf/api/PF_Test_Modules/collect_base39_isolated.py --bus 16 --clear-ms 150 170`) writes
+   into PHPS_Opt and drives PowerFactory, so it is the user's to run. It writes
+   `study/pf_reference/rms/BASE_fault_bus16_{150,170}ms.csv`.
+5. **LineFault and rk4** (asked 2026-09-29; the user asked which system it is): the only
+   scenario with either is PHPS's `IEEE39Bus/mid_line_fault.json` (IEEE-39, LineFault on
+   Line_1, bus 1 to bus 2, at d = 0.5, method rk4). Its system file `IEEE39Bus/system.json`
+   has never existed in PHPS_Opt's history (the scenario already pointed at it in the first
+   commit, e086716); the folder's only system, `system_phs.json`, is an older IEEE-39 of
+   retired models (GENROU_PHS, IEEEX1_PHS, TGOV1_PHS, IEEEST_PHS). Not Kundur: PHPS has no
+   two-area case. PHPS cannot run the scenario. Porthos loads it and refuses to simulate it
+   with a clear error. Options: leave unsupported (agent's recommendation) or implement
+   LineFault on the DAE path by splitting the line (no PHPS reference; checked only against
+   a hand-split case with a BusFault).
+
+## Decided (2026-09-29)
+
+- **Parity pack v4 is published**: release `parity-pack-v4` with `parity_pack-v4.tar.gz`
+  (sha256 `d055ebf55875f72d6f5c1e6632b9be5f98c7a549e68cd2dd7c681733f36399c0`, tree hash
+  `2d5a8c246703fe42d90791076935381a385f6b98`, both checked on the downloaded file), made
+  like v3 (REST API, stored git credential).
+- **PowerFactory comparison (P7)**: the user re-records the PF traces with
+  `collect_base39_isolated.py --bus 16 --clear-ms 150 170`; the agent then brings the CSVs
+  in as an artifact (not git), and the gate is relative, as PHPS's own validation: per
+  machine, Porthos (IDA at production tolerances) against PF no worse than PHPS at
+  `ba11ea1` against PF (the pack's `ida_prod` run, which logs every dotted CSV column, so
+  `delta`, `omega`, `Pe` are there), RMS <= 1.05 x PHPS's + floors (1e-5 pu speed, 0.05 deg
+  angle relative to G 01, 1e-3 pu P; G 10 strictly no worse), with PHPS's metrics from
+  `study/src/model_review_pf_compare.py` (angles unwrapped, offset removed before the fault;
+  PF on its own time grid, interpolated).
+
+- **Parity pack v3 is published**: GitHub release `parity-pack-v3` on Rasoolpey/Porthos.jl
+  with `parity_pack-v3.tar.gz` (sha256
+  `b2ceaed1c8b44ed95b1180fc33e2a771b5463f1d08b8c4c91729cb32e335398e`, tree hash
+  `c7353f05cb079034198de322f9dcfae7f9feaf68`, both checked on the downloaded file), created
+  through the GitHub REST API with the stored git credential (no `gh` CLI on this machine).
+  CI and fresh clones can fetch it. A future pack (v4, ...) needs its own release the same
+  way; the tarball must be uploaded exactly as `bind_parity_pack.jl` wrote it
+  (`archive_artifact` output is not byte-reproducible).
+- **GFL-ZIF is deferred.** PHPS at ba11ea1 cannot initialise any of the three GFL-ZIF system
+  files (coupled network solve does not converge at t = 0), so `GFL_ZIF_PHTRUE` has no
+  reference yet. The user will come back to the energy-reservoir model of the GFL converter
+  later; until then GFL_ZIF_PHTRUE is not ported. (It is not a P5 to P7 parity case.)
+- **P3 gate wording changed** (user approval): bus voltages match PHPS within 1e-8, and the
+  case `v0` within 1e-6 and `a0` within 2e-6 relative to the slack bus (the stored values
+  are rounded to 6 decimals, and the converter cases keep PowerFactory's angle reference).
+  `docs/ROADMAP.md`, `README.md` and `test/parity/p3_powerflow.jl` updated; no more
+  `@test_broken` there.
+- The repository has one branch, `master`; commits go there directly (commit and push only
+  when asked). Pushing `master` runs CI.
+- **IDA gate reworded** (user: both integrators' results are accurate within their
+  limits): IDA against PHPS IDA at `rtol = atol = 1e-10` must agree within 1e-6 until the
+  first limiter enters a sliding mode; afterwards the difference is reported, not gated.
+  Reason: where the IEEEG3 pilot valve chatters (bus-16 fault, from 1.3 s) the IDA solution
+  depends on step placement, not tolerance (Porthos at 1e-9 vs 1e-10 differs by 4e-2 there;
+  at 1e-11 IDA fails). BDF1 stays the exact check. Possible later improvements (not now):
+  event detection on switching surfaces (roadmap 2.3), finer steps, or retuned limiter
+  parameters. `docs/ROADMAP.md` updated.
+- **Scripts must be one command** (user preference): `julia --project=. scripts\<name>.jl`
+  from the repository root, no extra environments or environment variables. Optional
+  tools such as CairoMakie are installed into Julia's default environment on first use.
 
 ## Environment on this machine
 
@@ -82,10 +134,21 @@ SUNDIALS at `C:\msys64`). Safe to re-run.
   compiled BDF1 and IDA runs work here (needed for the P7 references).
 - PHPS_Opt is at `ba11ea1`, with uncommitted docs-only changes (recorded in the pack
   manifest). The generator refuses to run if PHPS inputs are dirty.
-- Tests: `julia --project=. test/runtests.jl` (about 30 s), or `Pkg.test()`, which is
+- Run a fault and plot it: `julia --project=. scripts/run_base_fault.jl` (BDF1 and IDA of
+  the base-case bus-16 fault; results in `outputs/IEEE39Bus_PF_base_bus16_150ms_{bdf1,ida}/`,
+  figures in `outputs/figures/`). The user ran it successfully (2026-09-29); the figures
+  then got a distinct colour per machine and legends outside the axes. BDF1 takes about
+  80 s (the faithful PHPS scheme: a finite-difference Jacobian of 282 residual calls and a
+  dense LU per Newton iteration; PHPS's C++ takes 67 s); IDA about 5 s (PHPS: 6.8 s).
+- **Start-up time** (the user's complaint about compiling on every run): `src/precompile.jl`
+  is a PrecompileTools workload (load, equilibrium, BDF1 and IDA steps with a fault switch,
+  the CSV / JLD2 / run.json writers). Precompiling Porthos takes about 20 s after a source
+  change; a fresh process then reaches the simulation in about 2 s (before: about 22 s of
+  compilation). A PackageCompiler system image remains possible if the 2 s ever matter.
+- Tests: `julia --project=. test/runtests.jl` (about 40 s), or `Pkg.test()`, which is
   slower (it precompiles a fresh test environment). One gate alone:
   `julia --project=. -e 'using Porthos, Test; const ROOT = pwd(); include("test/parity/common.jl"); include("test/parity/p4_components.jl")'`.
-  To test against a local pack before binding it: `PORTHOS_PARITY_PACK=parity/pack-v2`.
+  To test against a local pack before binding it: `PORTHOS_PARITY_PACK=parity/pack-v4`.
 - Regenerate the pack: see `parity/README.md` (new baseline = new version, new reason).
 
 ## What exists
@@ -101,6 +164,7 @@ src/io/contracts.jl       ContractSet / ContractEntry / DomainClause
 src/io/params.jl          MODEL_TYPES (PHTRUE set + COMPLEXLOAD), machine-base normalisation,
                           component_params + per-type constructor defaults (type_defaults!)
 src/io/parity.jl          parity pack: artifact lookup, SHA-256 verification, readers
+                          (pack_json; pack_binary for the sim .bin files)
 src/network/ybus.jl       Network (sorted bus ids), ybus / ybus_pf / ybus_dae, Norton stamps,
                           load admittances; CPython complex division for bit parity
 src/network/events.jl     fault admittance, fault shunts, with_fault, LineFault line split
@@ -118,13 +182,30 @@ src/assembly/wiring.jl    InputSource, resolve_wiring (PHPS wire semantics + pos
 src/assembly/dae.jl       DAESystem, assemble (Y-bus at the power-flow voltages, PHPS's C++
                           constant rounding), dae_residual! (port of the C++ dae_residual)
 src/assembly/sparsity.jl  jacobian_pattern (structural, valid in every limiter mode)
+src/init/components.jl    init_from_phasor (machines), init_from_targets (exciter, governors),
+                          first_pass (PHPS Initializer.run: power split, machine links)
+src/init/equilibrium.jl   solve_equilibrium: first pass -> Gauss-Newton on the full DAE,
+                          slack set-point closing the power balance, Vini fixed point,
+                          reservoir references; component_io
+src/components/dispatch.jl     concrete-type dispatch over the models (the residual takes
+                          5.6 us and does not allocate on IEEE-39)
+src/components/observables.jl  PHPS's logged signals per model (delta_deg, Te, H_steam, ...)
+src/assembly/dae.jl       also DAEWorkspace + the allocation-free residual with per-fault flags
+src/sim/bdf1.jl           simulate_bdf1: port of PHPS's solve_bdf1; SimResult
+src/sim/ida.jl            simulate_ida (Sundials.jl), consistent_voltages! (IDACalcIC-like)
+src/sim/results.jl        csv_columns / csv_row / write_results_csv / write_results_jld2,
+                          run_metadata (records the settings the integrator used), simulate
+src/precompile.jl         PrecompileTools workload for the simulation path
+scripts/run_base_fault.jl simulate the base-case bus-16 fault and plot it (one command)
+parity/generate/sim.py    sim section: PHPS's compiled BDF1 / IDA runs (5 ms grid, binary)
 ext/                      PorthosMakieExt (CairoMakie), PorthosJuMPExt (JuMP): empty stubs
 parity/generate/generate_pack.py   pack generator (network, powerflow, records, components)
 parity/generate/components.py      components section: PHPS init, instrumented kernels, sampling
 parity/generate/dae.py             dae section: PHPS's C++ kernel compiled with a residual harness
 scripts/bind_parity_pack.jl        tarball + Artifacts.toml binding (hash taken from the tarball)
 scripts/setup.ps1                  one-command install
-test/unit/, test/parity/p0..p5     unit tests and the P0 to P5 gates
+test/unit/, test/parity/p0..p7     unit tests and the P0 to P7 gates (common.jl:
+                                   phps_init_params, phps_initial_state)
 ```
 
 ## Findings about PHPS that later phases depend on
@@ -163,6 +244,18 @@ test/unit/, test/parity/p0..p5     unit tests and the P0 to P5 gates
   cases). COI: members are generators with an `omega` state (weight 2H, or Ta), every rotor
   angle gets `- omega_b (omega_COI - 1)`, `delta_COI' = omega_b (omega_COI - 1)`, `omega_b`
   from the first member.
+- **How Porthos initialises (P6)**, replacing PHPS's multi-pass refinement: the first pass
+  (a port of `Initializer.run`: machines from `I = conj(S/V)` at their power-flow phasors,
+  exciters and governors from the machine targets, loads with `V0 = Vini = |V_pf|`), then a
+  Gauss-Newton solve (QR least squares, rows equilibrated) of the full DAE. Unknowns: all
+  states except `delta_COI`, the reservoir levels and the slack machine's rotor angle
+  (rotation gauge), plus all bus voltages. Equations: all rows except the reservoir rows
+  and the `delta_COI` row (the frequency is left free). Around it, the slack machine's
+  set-point (its governor's `Pref`, or its `Tm0`) is adjusted by a scalar Newton step until
+  `omega_COI = 1`, the way the power-flow slack absorbs the losses, and `Vini` is set to the
+  solved `|V|` until it no longer changes. Finally each reservoir reference is set to the
+  power it supplies. On the base case PHPS's whole refinement moves the state by at most
+  6.3e-12 from its first pass, which is why this reproduces PHPS.
 - **PHPS's equilibrium is not tight**: at the initialised `(x*, V*)` its own residual is
   up to 3e-10 in f (8e-9 in the converter cases) and 1e-8 in g. The P6 gate allows for this
   (`||J^-1|| r_PHPS`).
@@ -208,26 +301,18 @@ test/unit/, test/parity/p0..p5     unit tests and the P0 to P5 gates
 - The Norton rule still lives in `network/ybus.jl` (`norton_stamps`); the components'
   `norton_admittance` is tested equal to it. Switch `ybus_dae` to the components with the
   converters.
-- The residual allocates (buffers per call) and uses the dense Y-bus. That is fine for
-  parity; P7 needs a preallocated, sparse (CSR, same summation order) version for speed.
+- The residual is allocation-free now (`DAEWorkspace`) but still uses the dense Y-bus
+  (39 buses: fine). Larger networks need a sparse KCL with the same summation order.
 - id_dq / iq_dq refresh: PHPS overwrites these outputs between the output and step passes
   with 6-decimal coefficients. Nothing in the parity cases reads them; `assemble` refuses a
   case that does.
 
-## Next steps (P6, then P7 on the base case)
+## Next steps
 
-1. P6, initialisation. Port PHPS's chain as `DiracRunner.build` runs it: power flow ->
-   `Initializer.run` (each generator's `init_from_phasor`, exciters' and governors'
-   `init_from_targets`, the targets dictionary) -> the v0/a0 and load V0/Vini overwrite ->
-   DAE-consistent voltages (`_compute_dae_consistent_voltages`, `CoupledNetwork`) ->
-   `_rebalance_te_for_fullbus`, `_sync_voltages_to_states`, the closure loop -> Pref sync
-   (`pref_from_rest_state`) -> `_equilibrium_polish` (Newton on f = 0). Then replace it by one
-   Newton solve of the full DAE for `(x*, V*)` (roadmap). Gate: residual at most 1e-12, and
-   `x*`, `V*` within 1e-10 of the pack's `dae/<case>.json` equilibrium, or within
-   `||J^-1|| r_PHPS` where PHPS's residual is larger. P6 must also reproduce every
-   `init_set` parameter (the P4 and P5 gates take them from the pack until then).
-2. P7, simulation: BDF1 first (PHPS's fixed-step scheme in `_emit_main`), then IDA via
-   Sundials.jl; events, results writer (`simulation_results.csv` with PHPS's columns),
-   `run.json`. Reference trajectories: PHPS's compiled runs (g++ and SUNDIALS are
-   installed), at production tolerances, `rtol = atol = 1e-10`, and BDF1 `dt = 5e-4`.
+1. **PowerFactory comparison**: when the user has re-recorded the traces, bring the two
+   CSVs in as an artifact (with the run's JSON sidecar and the PHPS commit it was run
+   against), port the metrics of `model_review_pf_compare.py` to Julia, and add the relative
+   gate to `test/parity/p7_sim.jl` (see "Decided").
+2. **LineFault / rk4**: as the user decides ("Needs the user", item 5).
 3. Then the converters (P4 items 4 and 5) and P5 to P7 on the GFL, VSM, droop and VOC cases.
+4. Later: a faster BDF1 option (sparse AD Jacobian, sparse LU) next to the PHPS-exact one.
