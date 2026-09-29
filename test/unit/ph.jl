@@ -117,3 +117,68 @@ end
     @test maximum(minimum(abs.(lam .- l)) for l in lsec) <= 1e-10 * maximum(abs, lsec)
     @test minimum(abs, lam) <= 1e-10 * maximum(abs, lsec)
 end
+
+@testset "structure search (route B)" begin
+    IA = Porthos.IntervalArithmetic
+    # interval eigenvalue bound
+    @test 0.99 < verified_min_eig(IA.interval.(Matrix(Diagonal([1.0, 2.0, 3.0])))) <= 1.0
+    @test verified_min_eig(IA.interval.([1.0 2.0; 2.0 1.0])) < 0
+    # A is Hurwitz but has no diagonal Lyapunov function ((As'P + PAs)_11 = 0.2 p_1 >= 0).
+    # A hand-made dual certificate: Z >= 0 with the diagonal of AZ + ZA' positive.
+    A = [0.1 1.0; -1.0 -1.0]
+    diagonal = BitMatrix([true false; false true])
+    Z = [1.0 -0.05; -0.05 0.01]
+    c = pattern_certificate(A, diagonal, Z, zeros(2, 2))
+    @test c.infeasible
+    @test c.float_bound ≈ 0.08 / 1.01 rtol = 1e-12
+    @test 0 < c.verified_bound <= c.float_bound
+    # the full pattern: the Lyapunov-equation solution passes the rigorous check, I does not
+    Q = lyap(Matrix(A'), Matrix(1.0I, 2, 2))
+    @test verified_lyapunov(Q, A).lyapunov
+    @test !verified_lyapunov(Matrix(1.0I, 2, 2), A).lyapunov
+    @test !pattern_certificate(A, trues(2, 2), Z, zeros(2, 2)).infeasible
+    # powers of two: the scaling is exact
+    T = pow2_scaling([3.0, 1e-5, 4.4e5])
+    @test all(t -> t == exp2(round(log2(t))), diag(T))
+    B = [1.3 -2.7 0.1; 5.5 0.3 -1.1; 2.2 7.9 -3.3]
+    @test T \ B * T == [B[i, j] * T[j, j] / T[i, i] for i in 1:3, j in 1:3]
+
+    # the base case: patterns, the section map, and the dense storage
+    sc = load_scenario(joinpath(ROOT, "cases", "IEEE39Bus_PF", "bus_fault_bus16_150ms.json"))
+    eq = solve_equilibrium(load_case(sc.system_path), sc)
+    sys, x, V = eq.sys, eq.x, eq.V
+    proj = physical_projection(sys, x, V)
+    groups = state_groups(sys, proj)
+    z, U, As, ref = reference_section(sys, x, V, proj)
+    @test length(groups) == length(z) + 1 == 172
+    @test groups[ref].angle && groups[ref].component == "GENROU_1"
+    @test maximum(real, eigvals(As)) < 0
+    for kind in (:component, :unit)
+        m = storage_pattern(groups, kind)
+        @test m == m' && all(m[i, i] for i in axes(m, 1))
+        mz = section_pattern(m, U)
+        # terms with the reference angle become couplings with every rotor angle
+        ang = findall(g -> g.angle, groups[z])
+        own = findall(g -> g.unit == "GENROU_1", groups[z])
+        @test all(mz[i, j] for i in own, j in ang)
+        @test mz == mz' && all(mz[i, j] for i in 1:length(z), j in 1:length(z) if m[z[i], z[j]])
+    end
+    @test count(storage_pattern(groups, :unit)) > count(storage_pattern(groups, :component))
+    @test all(section_pattern(storage_pattern(groups, :full), U))
+    m = storage_pattern(groups, :component)
+    add_coupling!(m, groups, "GENROU_2", "GENROU_3")
+    i2 = findall(g -> g.component == "GENROU_2", groups)
+    i3 = findall(g -> g.component == "GENROU_3", groups)
+    @test all(m[i2, i3]) && all(m[i3, i2])
+    m = couple_states!(storage_pattern(groups, :unit), groups, g -> g.state == "omega", g -> g.angle)
+    iw = findall(g -> g.state == "omega", groups)
+    ia = findall(g -> g.angle, groups)
+    @test all(m[iw, ia]) && all(m[ia, iw])
+    # the dense Lyapunov solution, scaled by powers of two, passes the rigorous check
+    n = length(z)
+    Q0 = lyap(Matrix(As'), Matrix(1.0I, n, n))
+    T = pow2_scaling(diag(Q0))
+    Ass = T \ As * T
+    @test lyapunov_check(Q0, As).lyapunov
+    @test verified_lyapunov(T * Q0 * T, Ass).lyapunov
+end
