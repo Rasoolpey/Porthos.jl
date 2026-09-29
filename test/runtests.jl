@@ -11,11 +11,13 @@ include("parity/common.jl")
         include("unit/io.jl")
         include("unit/network.jl")
         include("unit/powerflow.jl")
+        include("unit/components.jl")
     end
     @testset "parity" begin
         include("parity/p0_pack.jl")
         include("parity/p1_io.jl")
         include("parity/p2_network.jl")
         include("parity/p3_powerflow.jl")
+        include("parity/p4_components.jl")
     end
 end

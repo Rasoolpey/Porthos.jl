@@ -1,7 +1,7 @@
 [parity_pack]
-git-tree-sha1 = "6e7d6bf617fa0d8c226616c740339d574a37c7a4"
+git-tree-sha1 = "035b093fb4306b9d186be6b48ae82e67f357b960"
 lazy = true
 
     [[parity_pack.download]]
-    sha256 = "fa5fd638f8c0b11b367b98e617240af862ba97f4284031240e65c5e3392deaa0"
-    url = "https://github.com/Rasoolpey/Porthos.jl/releases/download/parity-pack-v1/parity_pack-v1.tar.gz"
+    sha256 = "c9ee1284e2b37a61ba39cb3303b9bbe2fcc10cde9ec6d5e2c396a9119bb74651"
+    url = "https://github.com/Rasoolpey/Porthos.jl/releases/download/parity-pack-v2/parity_pack-v2.tar.gz"

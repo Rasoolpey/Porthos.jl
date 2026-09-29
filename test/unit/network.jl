@@ -90,3 +90,13 @@ end
     @test la.G ≈ [0.0, 0.5 / 0.98^2, 0.0] && la.B ≈ [0.0, -0.2 / 0.98^2, 0.0]
     @test !la.has_complex_loads && all(iszero, la.kpf)
 end
+
+@testset "only PHTRUE models" begin
+    for t in ("GENROU_PHS", "GENROU", "GENCLS", "IEEEX1_PHS", "TGOV1_PHS")
+        old = toy_case(extra = Dict("components" => Dict(
+            "G1" => Dict("type" => t, "params" => Dict("bus" => 1)))))
+        @test_throws UnsupportedModelError norton_stamps(old)
+        @test_throws UnsupportedModelError component_params(old, only(old.components))
+    end
+    @test "GENROU_PHTRUE" in MODEL_TYPES && !("GENROU_PHS" in MODEL_TYPES)
+end

@@ -105,8 +105,12 @@ Component types to port. The active set comes first, because it is what the IEEE
 - load: `COMPLEXLOAD` (contract key `ComplexLoad`)
 - converters: `GFL_PHTRUE`, `GFL_ZIF_PHTRUE`, `GFM_VSM_PHTRUE`, `GFM_DROOP_PHTRUE`, `GFM_VOC_PHTRUE`
 - network: `PiLine`, `Transformer2W`, shunts
-- later, only if needed: `GENROU_PHS`, `IEEEX1_PHS`, `TGOV1_PHS`, `IEEEST_PHS` and the retired
-  families.
+- not ported for now: the older models in PHPS `components/retired/` (`GENROU_PHS`,
+  `IEEEX1_PHS`, `TGOV1_PHS`, `IEEEST_PHS`, ...). They stay in PHPS_Opt as reference. Five
+  PHTRUE classes are Python subclasses of retired ones (GENROU_PHTRUE of `GenRouPHS`,
+  GENSAL_PHTRUE of `GenSal`, IEEET1_PHTRUE, IEEEG1_PHTRUE and IEEEG3_PHTRUE of their `_PHS`
+  parents); each is ported as one flat model whose equations are the inherited code plus the
+  PHTRUE changes, and the parent is read only to find out what the PHTRUE model computes.
 
 Event types in use: `BusFault` (about 1,650 scenarios) and `LineFault` (one). Solver methods in
 use: `ida` (about 1,390 scenarios), `bdf1` (about 200) and `rk4` (one).

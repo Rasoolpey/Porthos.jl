@@ -6,9 +6,36 @@
 # Porthos reproduces the processing exactly, including its heuristics. Source:
 # phps/src/json_compat.py `_normalise_genrou_params` (PHPS commit ba11ea1).
 
+"""
+Component model types Porthos implements: the final PHTRUE models of PHPS plus
+`COMPLEXLOAD`. The older models in PHPS `components/retired/` are not ported for now; they
+stay in PHPS_Opt as reference. Cases that use them still load (`load_case` does not depend
+on model types), but every model-level function rejects them.
+"""
+const MODEL_TYPES = Set(["GENROU_PHTRUE", "GENSAL_PHTRUE", "IEEET1_PHTRUE", "IEEEG1_PHTRUE",
+                         "IEEEG3_PHTRUE", "COMPLEXLOAD", "GFL_PHTRUE", "GFL_ZIF_PHTRUE",
+                         "GFM_VSM_PHTRUE", "GFM_DROOP_PHTRUE", "GFM_VOC_PHTRUE"])
+
+"""A component whose model type Porthos does not implement."""
+struct UnsupportedModelError <: Exception
+    component::String
+    type::String
+end
+Base.showerror(io::IO, e::UnsupportedModelError) =
+    print(io, "UnsupportedModelError: component ", e.component, " has model type ", e.type,
+          ", which Porthos does not implement (supported: ",
+          join(sort!(collect(MODEL_TYPES)), ", "), ")")
+
+"""
+    check_model_type(spec)
+
+Throw [`UnsupportedModelError`](@ref) unless `spec.type` is in [`MODEL_TYPES`](@ref).
+"""
+check_model_type(spec::ComponentSpec) =
+    spec.type in MODEL_TYPES ? nothing : throw(UnsupportedModelError(spec.name, spec.type))
+
 """Machine types whose parameters PHPS converts from machine base to system base."""
-const MACHINE_BASE_TYPES = Set(["GENROU", "GENROU_PHS", "GENROU_PHTRUE", "GENSAL",
-                                "GENSAL_PHTRUE", "GENTPF", "GENTPJ"])
+const MACHINE_BASE_TYPES = Set(["GENROU_PHTRUE", "GENSAL_PHTRUE"])
 
 const _GENROU_ALIASES = ("xd1" => "xd_prime", "xq1" => "xq_prime",
                          "xd2" => "xd_double_prime", "xq2" => "xq_double_prime",
@@ -133,10 +160,12 @@ end
     component_params(case, spec) -> ParamDict
 
 The parameters PHPS uses for a component: the case values, normalised to the system base
-for synchronous machines (unless `_params_normalized` is set), plus the constructor
-defaults that affect the network (converter series impedance).
+for synchronous machines (unless `_params_normalized` is set), plus the defaults and derived
+values its constructor adds ([`type_defaults!`](@ref)). Parameters set by initialisation
+(reservoir references, load `Vini`, `Pref`/`Vref`) keep their defaults here.
 """
 function component_params(case::Case, spec::ComponentSpec)
+    check_model_type(spec)
     p = ParamDict(string(k) => _pv(v) for (k, v) in spec.params)
     if spec.type in MACHINE_BASE_TYPES && !(get(p, "_params_normalized", false) === true)
         p = normalise_machine_params(p, case.config.mva_base, case.config.fn)
@@ -148,5 +177,13 @@ function component_params(case::Case, spec::ComponentSpec)
     elseif spec.type in ("GFL_PHTRUE", "GFL_ZIF_PHTRUE")
         get!(p, "ra", 0.0)
     end
-    return p
+    return type_defaults!(Val(Symbol(spec.type)), p)
 end
+
+"""
+    type_defaults!(::Val{type}, p::ParamDict) -> p
+
+The defaults and derived parameters a PHPS model constructor adds (e.g. reservoir
+capacities, saturation coefficients). Each model file adds its method.
+"""
+type_defaults!(::Val, p::ParamDict) = p

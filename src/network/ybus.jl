@@ -157,20 +157,22 @@ struct NortonStamp
     xd_pp::Float64
 end
 
-"""Component types that PHPS treats as generators with a Norton admittance."""
-const NORTON_TYPES = Set(["GENROU", "GENROU_PHS", "GENROU_PHTRUE", "GENSAL", "GENSAL_PHTRUE",
-                          "GENCLS", "GFM_VSM_PHTRUE", "GFM_DROOP_PHTRUE", "GFM_VOC_PHTRUE"])
+"""Model types that PHPS treats as generators with a Norton admittance."""
+const NORTON_TYPES = Set(["GENROU_PHTRUE", "GENSAL_PHTRUE", "GFM_VSM_PHTRUE",
+                          "GFM_DROOP_PHTRUE", "GFM_VOC_PHTRUE"])
 
 """
     norton_stamps(case) -> Vector{NortonStamp}
 
 The Norton admittances PHPS adds to the DAE Y-bus, in component order: every generator
-except the current-source converters (`GFL_PHTRUE`, `GFL_ZIF_PHTRUE`). `xd''` falls back to
+except the current-source converters (`GFL_PHTRUE`, `GFL_ZIF_PHTRUE`). Throws
+[`UnsupportedModelError`](@ref) if the case uses a model type Porthos does not implement. `xd''` falls back to
 `xd1`, then 0.2, as in PHPS. (At P4 this moves into each model's `injection`.)
 """
 function norton_stamps(case::Case)
     out = NortonStamp[]
     for spec in case.components
+        check_model_type(spec)          # an unknown generator must not be skipped silently
         spec.type in NORTON_TYPES || continue
         p = component_params(case, spec)
         ra = haskey(p, "ra") ? param_value(p["ra"]) : 0.0

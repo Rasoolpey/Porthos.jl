@@ -11,6 +11,8 @@ The pack is built in sections, so later phases can extend it:
                 fault shunts                                           (P2)
     powerflow   Newton-Raphson bus voltages and specifications         (P3)
     records     certificate records copied unchanged from PHPS         (P11 targets)
+    components  model kernels, outputs, H and grad H at random states and inputs, with
+                branch outcomes (see components.py)                    (P4)
 
 A new or regenerated pack is a new baseline: it gets a new artifact hash and a written
 reason in parity/README.md.
@@ -58,7 +60,7 @@ PARITY_CASES = [
      "IEEE39Bus_PF_gfm-voc/bus_fault_gfm_voc_bus16.json"),
 ]
 
-SECTIONS = ("network", "powerflow", "records")
+SECTIONS = ("network", "powerflow", "records", "components")
 
 # PHPS paths whose modification would change the reference numbers. The generator refuses
 # to run if any of them is dirty; other dirty paths (documentation) are recorded.
@@ -301,6 +303,14 @@ def main() -> None:
     write_json(out / "cases.json", cases_index)
 
     records = section_records(phps_root, out) if "records" in sections else []
+
+    if "components" in sections:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from components import section_components
+        case_by_name = {n: s for n, s, _ in PARITY_CASES}
+        for ctype, rec in section_components(phps_root, case_by_name).items():
+            write_json(out / "components" / f"{ctype}.json", rec)
+            print(f"  components: {ctype} done", file=sys.stderr)
 
     import numpy, scipy, sympy
     files = {}

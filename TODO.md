@@ -3,28 +3,33 @@
 Read this first in a new session, then `AGENTS.md` and `docs/ROADMAP.md`. Updated at the
 end of every session.
 
-Last session: 2026-09-29. Phases P0 to P3 implemented; the test suite passes
-(`736 pass, 6 broken`; the broken ones are the open P3 question below).
+Last session: 2026-09-29. P0 to P3 are done. P4 is done for the synchronous-machine set
+(GENROU, GENSAL, IEEET1, IEEEG1, IEEEG3, COMPLEXLOAD); the converters come after the P5 to
+P7 slice. The test suite passes (`1012 pass, 6 broken`; the broken ones are the open P3
+question below).
 
 ## Status by phase
 
 | Phase | State | Gate |
 |---|---|---|
-| P0 environment + parity pack | done locally | Pack v1 loads and every hash checks locally. **CI cannot fetch the pack until the tarball is uploaded** (see "Needs the user"). |
+| P0 environment + parity pack | done locally | Pack v2 loads and every hash checks locally. **CI cannot fetch the pack until the tarball is uploaded** (see "Needs the user"). |
 | P1 input / output | done | All 60 JSON under `cases/` load, validate and round-trip; all 200 PHPS case files also load (optional test, runs when PHPS_Opt is present). |
 | P2 network | done | Y-bus (power-flow and DAE), load admittances, Norton stamps and fault shunts equal PHPS **bit for bit** on all 6 parity cases (gate asks for 1e-12). |
 | P3 power flow | done, one clause open | `V`/`theta` match PHPS within 4e-15 (gate 1e-8), same iteration counts. The "case v0/a0 within 1e-8" clause cannot hold (below); marked `@test_broken`, not loosened. |
-| P4 components | next | |
-| P5 to P12 | not started | |
+| P4 components, items 1 to 3 | done | GENROU_PHTRUE, GENSAL_PHTRUE, IEEET1_PHTRUE, IEEEG1_PHTRUE, IEEEG3_PHTRUE, COMPLEXLOAD: at 200 samples each, all 43 state-dependent branch sites agree with PHPS and each goes both ways; rhs, both output sets, injection, H and grad H within rtol 1e-12 (rhs bit-identical at 1190 of 1200 samples); parameters identical to PHPS's; contract entry identical. `rhs!` / `outputs!` are type-stable and allocation-free; ForwardDiff Jacobians checked. |
+| P4 items 4 and 5 (converters) | after P7 | per the roadmap order of work |
+| P5 assembly | next | |
+| P6 to P12 | not started | |
 
 ## Needs the user
 
-1. **Upload pack v1** (outward-facing, so not done by the agent): create the GitHub release
-   `parity-pack-v1` on Rasoolpey/Porthos.jl and attach `parity/dist/parity_pack-v1.tar.gz`
-   (sha256 `fa5fd638f8c0b11b367b98e617240af862ba97f4284031240e65c5e3392deaa0`, bound in
+1. **Upload pack v2** (outward-facing, so not done by the agent): create the GitHub release
+   `parity-pack-v2` on Rasoolpey/Porthos.jl and attach `parity/dist/parity_pack-v2.tar.gz`
+   (sha256 `c9ee1284e2b37a61ba39cb3303b9bbe2fcc10cde9ec6d5e2c396a9119bb74651`, bound in
    `Artifacts.toml`). Until then CI fails at the parity gates. The tarball is git-ignored
    and must not be regenerated before upload: `archive_artifact` output is not
-   byte-reproducible, and `Artifacts.toml` binds this exact file.
+   byte-reproducible, and `Artifacts.toml` binds this exact file. (Pack v1 was superseded
+   before it was uploaded; nothing to do for it.)
 2. **P3 gate wording** (AGENTS.md: "if a gate looks wrong, explain why and ask"). "Bus
    voltages match ... the case v0/a0 within 1e-8" cannot hold, even for PHPS:
    - the cases store PowerFactory voltages to 6 decimals, so PHPS differs by up to
@@ -39,9 +44,13 @@ Last session: 2026-09-29. Phases P0 to P3 implemented; the test suite passes
    SciML stack (NonlinearSolveBase via Sundials and NonlinearSolve) needs TimerOutputs 1.x,
    so they cannot resolve together. SCS and COSMO are in. Revisit when Clarabel updates, or
    decide whether it matters for P10 and II.1.
-4. Commit when you are ready (the agent does not commit without being asked). Everything is
-   uncommitted: `Project.toml`, `Manifest.toml` (to be committed per P0), `Artifacts.toml`,
-   `src/`, `ext/`, `test/`, `cases/`, `contracts/`, `parity/`, `scripts/`, CI and this file.
+4. **PHPS Hamiltonian at 50 Hz** (for information, no parity case affected): PHPS's
+   `hamiltonian` / `grad_hamiltonian` for GENROU and GENSAL compute the base frequency as
+   `2*pi*params.get('fn', 60)`, but machine params never contain `fn`, so they use 60 Hz
+   even in a 50 Hz case. Porthos uses the machine's `omega_b`, which is the same number at
+   60 Hz (all parity cases) and the correct one at 50 Hz.
+5. Commit when you are ready (the agent does not commit without being asked). The P4 work
+   is uncommitted on branch `p0-p3-io-network-powerflow`.
 
 ## Environment on this machine
 
@@ -55,16 +64,22 @@ P7 needs them.
   PATH (WindowsApps alias).
 - `Project.toml` compat `julia = "1.12"`; `Manifest.toml` resolved with 1.12.7; CI runs
   1.12 on ubuntu and windows.
-- PHPS runs here: venv at `parity/generate/.venv` (Python 3.13.15, PHPS
-  `requirements.txt`; git-ignored). Run PHPS with `PYTHONDONTWRITEBYTECODE=1` from
-  `PHPS_Opt/phps` so its tree stays untouched. **No g++ and no SUNDIALS yet**: needed at
-  P7 for PHPS's compiled DAE runs (IDA and BDF1 reference CSVs). Options: MSYS2
-  (`mingw-w64-x86_64-gcc`, `mingw-w64-x86_64-sundials`), or PHPS's pure-Python solver
-  `src/dirac/py_solver.py`, which says it is "identical to the C++ BDF-1".
+- PHPS runs here: venv at `parity/generate/.venv` (Python 3.13.15, pinned in
+  `parity/generate/requirements.txt`; git-ignored). Run PHPS with `PYTHONDONTWRITEBYTECODE=1`
+  and `PYTHONIOENCODING=utf-8` from `PHPS_Opt/phps` so its tree stays untouched. PHPS's full
+  initialisation runs in pure Python: `DiracRunner(path, output_dir=<temp dir>).build(
+  solver="scipy")` stops before C++ generation (always pass `output_dir`, or it writes into
+  PHPS_Opt). **No g++ and no SUNDIALS yet**: needed at P7 for PHPS's compiled DAE runs (IDA
+  and BDF1 reference CSVs). Options: MSYS2 (`mingw-w64-x86_64-gcc`,
+  `mingw-w64-x86_64-sundials`), or PHPS's pure-Python solvers in `src/dirac/py_solver.py`
+  (`scipy`, `jit`).
 - PHPS_Opt is at `ba11ea1`, with uncommitted docs-only changes (recorded in the pack
   manifest). The generator refuses to run if PHPS inputs are dirty.
-- Tests: `julia --project=. test/runtests.jl` (about 15 s), or `Pkg.test()`, which is
-  slower (it precompiles a fresh test environment).
+- Tests: `julia --project=. test/runtests.jl` (about 30 s), or `Pkg.test()`, which is
+  slower (it precompiles a fresh test environment). One gate alone:
+  `julia --project=. -e 'using Porthos, Test; const ROOT = pwd(); include("test/parity/common.jl"); include("test/parity/p4_components.jl")'`.
+  To test against a local pack before binding it: `PORTHOS_PARITY_PACK=parity/pack-v2`.
+- Regenerate the pack: see `parity/README.md` (new baseline = new version, new reason).
 
 ## What exists
 
@@ -76,20 +91,35 @@ src/io/schema.jl          JSONSchema validation (cases/schema/*.schema.json)
 src/io/case.jl            Case + typed tables with PHPS defaults; ComponentSpec, Wire
 src/io/scenario.jl        Scenario, SolverSettings, BusFault/LineFault/OtherEvent (PHPS DAE defaults)
 src/io/contracts.jl       ContractSet / ContractEntry / DomainClause
-src/io/params.jl          PHPS machine-base normalisation (_normalise_genrou_params) + ctor defaults
+src/io/params.jl          MODEL_TYPES (PHTRUE set + COMPLEXLOAD), machine-base normalisation,
+                          component_params + per-type constructor defaults (type_defaults!)
 src/io/parity.jl          parity pack: artifact lookup, SHA-256 verification, readers
 src/network/ybus.jl       Network (sorted bus ids), ybus / ybus_pf / ybus_dae, Norton stamps,
                           load admittances; CPython complex division for bit parity
 src/network/events.jl     fault admittance, fault shunts, with_fault, LineFault line split
 src/powerflow/newton.jl   exact port of PHPS Newton-Raphson; skip_pf_solve overrides
+src/components/primitives.jl   branch primitives with recorders (gt/ge/lt/le, clamp_mode,
+                          nonwindup, outband_relax, guard_min, select); NoModes / ModeLog
+src/components/interface.jl    AbstractComponent, rhs!/outputs!/step_outputs!/modes,
+                          hamiltonian, injection, norton_admittance, contract,
+                          build_component / with_params, COMPONENT_CONSTRUCTORS
+src/components/machines/  genrou.jl, gensal.jl
+src/components/exciters/  ieeet1.jl
+src/components/governors/ ieeeg1.jl, ieeeg3.jl
+src/components/loads/     complexload.jl
 ext/                      PorthosMakieExt (CairoMakie), PorthosJuMPExt (JuMP): empty stubs
-parity/generate/generate_pack.py   pack generator (sections network, powerflow, records)
+parity/generate/generate_pack.py   pack generator (network, powerflow, records, components)
+parity/generate/components.py      components section: PHPS init, instrumented kernels, sampling
 scripts/bind_parity_pack.jl        tarball + Artifacts.toml binding (hash taken from the tarball)
-test/unit/, test/parity/p0..p3     unit tests and the P0 to P3 gates
+scripts/setup.ps1                  one-command install
+test/unit/, test/parity/p0..p4     unit tests and the P0 to P4 gates
 ```
 
 ## Findings about PHPS that later phases depend on
 
+- **Only the PHTRUE models** (plus COMPLEXLOAD) are ported; the retired models stay in
+  PHPS_Opt as reference. Five PHTRUE classes inherit their equations from retired parents
+  (GENROU, GENSAL, IEEET1, IEEEG1, IEEEG3); each Porthos model is the flattened result.
 - **DAE, not ODE.** Porthos ports PHPS's DAE path (`src/dirac/`: `DiracCompiler`,
   `DiracRunner`; 68 uses in tools and studies). The Kron-reduced ODE path
   (`SimulationRunner`, `compiler.get_z_bus_kron`) is legacy (`tools/run_simulation.py`
@@ -98,41 +128,70 @@ test/unit/, test/parity/p0..p3     unit tests and the P0 to P3 gates
     Porthos has the topology (`split_line_for_fault`), but PHPS has no DAE reference for the
     one LineFault scenario. Decide at P7.
   - The one `rk4` scenario cannot run on the DAE path in PHPS either. Decide at P7.
+- **The Y-bus PHPS simulates with is not the one from the case `v0`.** Before building the
+  DAE, `DiracRunner.build` overwrites every bus `v0`/`a0` with the solved power-flow
+  voltages, and every load's `V0` and `Vini` too. So the simulation Y-bus has the PQ loads
+  at `(P - jQ)/V_pf^2`. The P2 gate compares the case-`v0` matrix (`DiracCompiler.build`
+  alone), which Porthos matches bit for bit. **P5 must build `ybus_dae` with the power-flow
+  voltages** (add a `v0` override to `ybus_dae` / `load_admittances`) and the pack's `dae`
+  section should record the matrix `runner.dae_compiler.Y_full` after `runner.build`.
+- **Initialisation writes parameters.** PHPS's initialisation adds or changes: GENROU /
+  GENSAL `Efd0`, `Tm0`; IEEET1 `PFD_REF`, `Vref`; IEEEG1 / IEEEG3 `PM_REF`, `Pref`;
+  COMPLEXLOAD `V0`, `Vini` (power-flow voltage, later `Vini` = DAE-consistent voltage).
+  The pack records them per instance (`init_set`); the P4 gate takes them from the pack.
+  P6 must reproduce them. The kernels bake some into literals (`PFD_REF`, `PM_REF`), so
+  they must be set before a simulation starts.
+- **Order of evaluation in PHPS's DAE:** all `out` kernels first, then all `step` kernels;
+  a step kernel overwrites some outputs (machines: Pe, Qe, id, iq, It, i_fd). Porthos:
+  `outputs!` = the out kernel, `step_outputs!` = after the step.
+- **COMPLEXLOAD constants are rounded** to 13 significant digits (`%.12e`, exponents
+  `%.6f`) when PHPS writes them into C++; Porthos rounds the same way (`_c12e`, `_c6f`).
 - DAE bus fault: `Y_f = (r - jx)/(r^2 + x^2)` with `z^2 >= 1e-20`; a missing `x` means
   `1e-5` (bolted, PowerFactory-like), a missing `r` means 0.
-- DAE Y-bus = lines + shunts + PQ loads as `(P - jQ)/v0^2` (case v0) + generator Norton
-  `1/(ra + j xd'')` for every `component_role == "generator"` except GFL and GFL_ZIF.
-  VSM, droop and VOC get `ra = 0`, `xd'' = Zseries` (default 0.10) from their constructors.
-  `load_G`/`load_B` for the residual are overridden by COMPLEXLOAD `P0`, `Q0`, `V0`.
-- Machine params (GENROU/GENSAL families) are converted from the Sn base to the system base
-  at load time, with an "already normalised" heuristic, a `D = 2 Sn/Sbase` default when `D`
-  is absent, and an `xd'' <= xl` repair. Ported in `src/io/params.jl`; P4 must use
-  `component_params`, not the raw JSON.
+- DAE Y-bus = lines + shunts + PQ loads as `(P - jQ)/v0^2` + generator Norton
+  `1/(ra + j xd'')` for every generator except GFL and GFL_ZIF. VSM, droop and VOC get
+  `ra = 0`, `xd'' = Zseries` (default 0.10) from their constructors. `load_G`/`load_B` for
+  the residual are overridden by COMPLEXLOAD `P0`, `Q0`, `V0`.
+- Machine params (GENROU/GENSAL) are converted from the Sn base to the system base at load
+  time, with an "already normalised" heuristic, a `D = 2 Sn/Sbase` default when `D` is
+  absent, and an `xd'' <= xl` repair (`src/io/params.jl`).
 - PHPS `YBusBuilder` defaults a missing line `x` to 0.001 (`system_graph` uses 0.01); Porthos
   follows the Y-bus.
-- Power flow: no Q-limits in PHPS. The unknowns are the angles of non-slack buses, then the
-  magnitudes of PQ buses. PHPS's power flow on IEEE-39 converges in 4 iterations to 2e-11.
+- Power flow: no Q-limits in PHPS. PHPS's power flow on IEEE-39 converges in 4 iterations to
+  2e-11.
 - The DAE state count on the base case is n_diff = 203 (including delta_COI) and
-  n_alg = 78 (Vd, Vq per bus).
+  n_alg = 78 (Vd, Vq per bus). GENROU_1 (bus 39, Sn = 10000) has no exciter or governor.
+- How PHPS's Python solver assembles the right-hand side (`src/dirac/py_solver.py`
+  `PyDAESolver.rhs`): network solve for V (Norton currents + voltage-dependent load
+  corrections, slack buses pinned), machine dq frames, output pass, step pass, then the COI
+  correction `dxdt[delta] -= omega_b (omega_coi - 1)` with `dxdt[delta_COI] =
+  omega_b (omega_coi - 1)` (weights from `coi_weight`). Wiring expressions come from
+  `dae_compiler.wiring_map` (e.g. `CONST:0.982000`, `BUS_31.Vterm`, `GENROU_2.i_fd`).
 
-## Next steps (P4, then the P5 to P7 slice)
+## Deferred from P4 (by design)
 
-Roadmap "Order of work": the synchronous-machine set first (P4 items 1 to 3), then P5 to
-P7 on the base case, then the converters.
+- `initialize(c, targets)`: belongs with P6, where PHPS's initialisation chain
+  (`init_from_phasor`, `init_from_targets`, the rebalancing passes, the Pref sync and the
+  equilibrium polish) is ported and checked end to end.
+- `observables(c)`: belongs with P7 (CSV columns such as `delta_deg`, `Te`, `H_steam`).
+- Interval methods for the branch primitives (`_gt`, ... returning the decided branch or
+  throwing `UndecidedBranch`, with margins): P11.
+- The Norton rule still lives in `network/ybus.jl` (`norton_stamps`); the components'
+  `norton_admittance` is tested equal to it. Switch `ybus_dae` to the components at P5.
 
-1. Extend `generate_pack.py` with a `components` section (pack v2, with a reason in
-   `parity/README.md`): for GENROU_PHTRUE, GENSAL_PHTRUE, IEEET1_PHTRUE, IEEEG1_PHTRUE,
-   IEEEG3_PHTRUE and COMPLEXLOAD, evaluate `f`, outputs, the Norton injection, `H` and
-   `grad H` at 200 random states and inputs (seeded, box around the equilibrium, samples
-   near switching surfaces redrawn), recording the limiter sides. Find out how PHPS
-   evaluates a single component in Python (C++ snippets via `src/dirac/py_codegen.py` and
-   `py_solver.py`, or the symbolic PHS in `get_symbolic_phs`), and use the same code the
-   DAE runs.
-2. `src/components/interface.jl` (`AbstractComponent`, the roadmap 2.2 functions) and
-   `primitives.jl` (`clamp_mode`, `nonwindup`, `select`, `guard_min`, with interval
-   decisions and switching surfaces).
-3. Port the six types in `src/components/{machines,exciters,governors,loads}/`: generic
-   number type, no bare `if` on state, non-allocating `rhs!`, with an allocation test each.
-   Move the Norton rule from `network/ybus.jl` into each model's `injection`.
-4. Then P5 (assembly: wiring from `connections`, state order = PHPS `state_offsets`, COI,
-   reservoirs, the residual `F`/`G`), P6 and P7 on the base case.
+## Next steps (P5, then P6 and P7 on the base case)
+
+1. Pack v3 `dae` section: from the initialised base case, the state layout
+   (`state_offsets`, names in kernel order, `delta_COI`), the wiring map, the simulation
+   Y-bus, and `f`, `g` at 50 random states (and the fault-on network). Find exactly what
+   PHPS's residual is: read `DiracCompiler.generate_cpp` (the C++ residual that IDA and
+   BDF1 solve) and `py_solver` (the Python form), and record `F(x, V)` / `G(x, V)` the way
+   the C++ defines them.
+2. `src/assembly/`: wiring graph from `connections` (port resolution: `BUS_<id>.Vd/Vq/Vterm`,
+   `COMP.port`, `CONST:<value>`), state layout in PHPS order, COI reference, reservoir
+   coordinates, the residual and its sparsity pattern.
+3. P6: port the initialisation chain; gate on `x*`, `V*` and the residual.
+4. P7: simulation (BDF1 first, then IDA via Sundials.jl), events, results writer, `run.json`;
+   PHPS reference trajectories need g++ + SUNDIALS or PHPS's Python solvers.
+5. Then the converters (P4 items 4 and 5) and re-run P5 to P7 on the GFL, VSM, droop and
+   VOC cases.

@@ -41,6 +41,7 @@ clones can fetch it. To test against a local pack directory before binding, set
 | `network/<case>.json` | bus order; power-flow Y-bus (`YBusBuilder.build(include_loads=False)`); DAE Y-bus (`DiracCompiler.Y_full`, after the scenario's events are injected as `DiracRunner` does); per-bus load `G`, `B`, `P`, `Q`, `kpf`, `kqf`; Norton stamps (`ra`, `xd''` as PHPS used them); bus-fault shunts; state counts | P2 |
 | `powerflow/<case>.json` | bus types, `P`/`Q` specifications, start point, solved `V`/`theta` (`PowerFlow.solve`, tol 1e-6, 20 iterations), iterations and final mismatch, computed `P`/`Q`, the case `v0`/`a0` | P3 |
 | `records/certificates/*.json` | the certificate records from `study/pf_reference/certificates/`, byte-for-byte from the commit (the `.npz` arrays are not included yet) | P11 |
+| `components/<TYPE>.json` | per model type (generator module `generate/components.py`): state, input and output names; every instance's parameters as PHPS uses them (`params_used`), the ones its initialisation added or changed (`init_set`), and its equilibrium `x*`, `u*`; the branch sites of the `step` and `out` kernels (condition text, parameter-only or state-dependent) and their coverage; 200 samples with `x`, `u`, `dxdt`, the outputs after the `out` kernel and after the `step` kernel, `H`, `grad H` and the outcome of every branch site | P4 |
 
 Complex matrices are stored as row-major `{"re": [[...]], "im": [[...]]}`. Floats are
 written with Python's `repr`, so Julia reads the exact binary64 values.
@@ -52,9 +53,19 @@ each with its bus-16 fault scenario.
 
 | Version | Artifact tree hash | PHPS commit | Sections | Reason |
 |---|---|---|---|---|
-| v1 | `6e7d6bf617fa0d8c226616c740339d574a37c7a4` | `ba11ea1827c344ace9dd2734215b5f5b4dbbe822` (dirty: docs only, `PHPSjl_ROADMAP.md` deleted, `phps/PHPS_nonlinear_PH_Lyapunov_ROA_roadmap.md` modified) | network, powerflow, records | Initial baseline for P0 to P3. Python 3.13.15, NumPy 2.5.3, SciPy 1.18.1, SymPy 1.14.0, Windows 11. |
+| v1 | `6e7d6bf617fa0d8c226616c740339d574a37c7a4` | `ba11ea1827c344ace9dd2734215b5f5b4dbbe822` (dirty: docs only, `PHPSjl_ROADMAP.md` deleted, `phps/PHPS_nonlinear_PH_Lyapunov_ROA_roadmap.md` modified) | network, powerflow, records | Initial baseline for P0 to P3. Python 3.13.15, NumPy 2.5.3, SciPy 1.18.1, SymPy 1.14.0, Windows 11. Superseded by v2 before it was uploaded. |
+| v2 | `035b093fb4306b9d186be6b48ae82e67f357b960` | same as v1 | network, powerflow, records, components | P4: adds the `components` section for the synchronous-machine set (GENROU_PHTRUE, GENSAL_PHTRUE, IEEET1_PHTRUE, IEEEG1_PHTRUE, IEEEG3_PHTRUE, COMPLEXLOAD, sampled on the base case). The 24 files of v1 are byte-identical in v2. Same tool versions. |
 
-Planned sections for later baselines: `components` (P4: `f`, outputs, injection, `H`,
-`grad H` at 200 random states with limiter sides), `dae` (P5: `f`, `g` at 50 states, state
-names), `init` (P6: `x*`, `V*`, residual), `sim` (P7: bus-16 fault CSVs for IDA production,
-IDA 1e-10 and BDF1), `ph` (P10), `studies` (P9).
+How the `components` samples are made: PHPS initialises the case in pure Python
+(`DiracRunner.build` with a Python solver stops before C++ generation), each component's C++
+kernels are translated to Python by PHPS's own `py_codegen`, and every condition is wrapped
+so its outcome is recorded. Each sample is checked to be bit-identical to PHPS's unmodified
+`make_step_func` / `make_out_func`. States and inputs are drawn around the equilibrium with
+wide draws on limited quantities; a sample whose branch outcomes change under a 1e-9
+relative perturbation is redrawn; the generator fails if any state-dependent site is not
+exercised both ways.
+
+Planned sections for later baselines: `components` for the converters (P4 items 4 and 5),
+`dae` (P5: `f`, `g` at 50 states, state names, and the Y-bus PHPS simulates with, which uses
+the power-flow voltages as `v0`), `init` (P6: `x*`, `V*`, residual), `sim` (P7: bus-16 fault
+CSVs for IDA production, IDA 1e-10 and BDF1), `ph` (P10), `studies` (P9).
