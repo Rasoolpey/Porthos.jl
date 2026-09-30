@@ -307,3 +307,98 @@ end
         @test norm(g.U / norm(g.U) - rs.Q / norm(rs.Q)) > 1e-3
     end
 end
+
+@testset "joint strain-energy identity (GENROU and GENSAL)" begin
+    sc = load_scenario(joinpath(ROOT, "cases", "IEEE39Bus_PF", "bus_fault_bus16_150ms.json"))
+    eq = solve_equilibrium(load_case(sc.system_path), sc)
+    sys = eq.sys
+    units = [strain_rotor(c) for c in sys.comps if strain_rotor(c) !== nothing]
+    @test length(units) == 11                      # 10 GENROU and the GENSAL
+    for sr in units
+        g = strain_metric(sr)
+        @test g.metric_positive && g.convex && g.residual < 1e-12
+    end
+    # the GENROU case is rotor_gradient_metric
+    c = first(c for c in sys.comps if c isa Porthos.GENROU_PHTRUE)
+    @test strain_metric(strain_rotor(c)).M ≈ rotor_gradient_metric(rotor_structure(c)).M
+    sysL = lossless_variant(sys)
+    smp = power_audit_samples(sys, eq.x, eq.V; n_random = 2)
+    for s in smp
+        rL = strain_balance(sysL, s.x, solve_network(sysL, s.x, s.V))
+        r = strain_balance(sys, s.x, s.V)
+        for q in (rL, r)
+            @test abs(q["identity_error"]) <= 1e-10 * max(1.0, abs(q["rate"]))
+            @test q["torque_error"] < 1e-12 && q["structure_error"] < 1e-12
+        end
+        # lossless: beyond the gradient structure only speed voltage and load lag remain
+        @test rL["conductance"] == 0 && abs(rL["active_load"]) < 1e-14
+        @test rL["paper_residual"] ≈ rL["speed_rotor"] + rL["speed_network"] + rL["load_lag"] + rL["saturation"] atol = 1e-10
+    end
+    # at the equilibrium (omega = 1) the speed-voltage terms vanish
+    r0 = strain_balance(sys, eq.x, eq.V)
+    @test abs(r0["speed_rotor"]) < 1e-14 && abs(r0["speed_network"]) < 1e-14
+end
+
+@testset "integrable-loss variant (constant-power sinks)" begin
+    sc = load_scenario(joinpath(ROOT, "cases", "IEEE39Bus_PF", "bus_fault_bus16_150ms.json"))
+    eq = solve_equilibrium(load_case(sc.system_path), sc)
+    sysI = integrable_loss_variant(eq.sys, eq.x, eq.V)
+    @test iszero(sysI.G) && any(c -> c isa ConstantPowerSink, sysI.comps)
+    # the equilibrium is kept
+    f, g = dae_residual(sysI, eq.x, eq.V)
+    @test maximum(abs, f) < 1e-10 && maximum(abs, g) < 1e-10
+    # the sinks draw what the machines supply beyond the lossless network
+    Pg = sum(r["Te"] for r in values(strain_balance(sysI, eq.x, eq.V)["machines"]))
+    @test sum(c.p.P for c in sysI.comps if c isa ConstantPowerSink) ≈ Pg rtol = 1e-9
+    # a sink's potential has gradient -j I
+    c = first(c for c in sysI.comps if c isa ConstantPowerSink)
+    v = [1.01, 0.12]
+    gr = ForwardDiff.gradient(w -> Porthos.sink_potential(c, w[1], w[2]), v)
+    id, iq = Porthos.injection(c, nothing, v)
+    @test gr ≈ [iq, -id] rtol = 1e-12
+    # every supply is exact: the identity leaves only the speed voltage and the load lag
+    for s in power_audit_samples(sysI, eq.x, eq.V; n_random = 2)
+        r = strain_balance(sysI, s.x, s.V)
+        @test abs(r["identity_error"]) <= 1e-10 * max(1.0, abs(r["rate"]))
+        @test r["conductance"] == 0 && abs(r["active_load"]) < 1e-14
+        @test r["paper_residual"] ≈ r["speed_rotor"] + r["speed_network"] + r["load_lag"] + r["saturation"] atol = 1e-10
+    end
+    m = section_model(sysI, eq.x, eq.V; scale = :none)
+    @test Porthos.neta(m) == Porthos.neta(section_model(eq; scale = :none))
+end
+
+@testset "storage completion: pattern closure and the lift of the repair terms" begin
+    # the invariant closure: angle entries of a non-angle coordinate are all or none
+    nm = ["G1.delta", "G1.omega", "G2.delta", "G2.omega", "L.z"]
+    mk = falses(5, 5); mk[1, 5] = mk[5, 1] = true; mk[2, 4] = mk[4, 2] = true
+    cl = invariant_closure(mk, nm)
+    @test cl[3, 5] && cl[5, 3] && cl[1, 5] && !cl[1, 3] && cl[2, 4] && !cl[1, 2]
+    mk[1, 2] = mk[2, 1] = true
+    cl = invariant_closure(mk, nm)
+    @test cl[3, 2] && cl[2, 3] && !cl[1, 3] && !cl[3, 4]    # omega_1 gets every angle; no angle-angle entry yet
+    @test invariant_closure(cl, nm) == cl
+    # the lifted repair terms have the basis matrices as their Hessians
+    sc = load_scenario(joinpath(ROOT, "cases", "IEEE39Bus_PF", "bus_fault_bus16_150ms.json"))
+    eq = solve_equilibrium(load_case(sc.system_path), sc)
+    m = section_model(eq; scale = :none)
+    n = Porthos.neta(m)
+    prob = completion_problem(m; forms = (H = zeros(n, n), A = zeros(n, n)))
+    @test length(prob.units) == 11 && length(prob.field) == 10
+    @test count(u -> u.exciter != 0, prob.units) == 10 && count(u -> u.governor != 0, prob.units) == 10
+    @test count(b -> b.kind === :load_filter, prob.basis) == 19
+    rng = Random.Xoshiro(5)
+    coef = [b.nonnegative ? rand(rng) : randn(rng) for b in prob.basis]
+    Fr = zeros(n, n)
+    sol = (F = Fr, coefficients = coef)
+    scm = storage_completion(prob, sol)
+    Pb = sum(coef[j] .* prob.basis[j].matrix for j in eachindex(coef))
+    for _ in 1:3
+        v = randn(rng, n)
+        d2 = ForwardDiff.derivative(s -> ForwardDiff.derivative(u -> completion_energy(scm, u .* v).repair, s), 0.0)
+        @test d2 ≈ dot(v, Pb * v) rtol = 1e-8
+    end
+    @test abs(completion_energy(scm, zeros(n)).repair) < 1e-14
+    # the field cross-term: a bilinear -(xe - xe*) B_f'M (z - z*)
+    f = prob.field[1]
+    @test all(i -> haskey(Dict(m.keep[m.z[j]] => j for j in 1:n), i), vcat(f.xe, f.z))
+end

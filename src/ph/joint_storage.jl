@@ -148,12 +148,8 @@ voltage (`E'' = omega psi''` in the model) is outside this structure.
 """
 function rotor_gradient_metric(rs)
     M = zeros(4, 4)
-    for (idx, col, row) in ((1:2, 1, 1), (3:4, 2, 2))
-        A, b, psi = rs.A[idx, idx], rs.Bs[idx, col], rs.Psi[row, idx]
-        # unknowns (m11, m12, m22): M b = -psi, (MA)_12 = (MA)_21
-        E = [b[1] b[2] 0.0; 0.0 b[1] b[2]; A[1, 2] (A[2, 2] - A[1, 1]) -A[2, 1]]
-        m = E \ [-psi[1], -psi[2], 0.0]
-        M[idx, idx] .= [m[1] m[2]; m[2] m[3]]
+    for (idx, col) in ((1:2, 1), (3:4, 2))
+        M[idx, idx] .= _axis_metric(rs.A[idx, idx], rs.Bs[idx, col], rs.Psi[col, idx])
     end
     U = -(M * rs.A + (M * rs.A)') ./ 2
     return (M = M, U = U, metric_positive = isposdef(Symmetric(M)), convex = isposdef(Symmetric(U)),

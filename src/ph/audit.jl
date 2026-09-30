@@ -34,14 +34,25 @@ Base.show(io::IO, p::PhysicalProjection) =
           length(p.keep), " kept, section ", size(p.basis, 2), ")")
 
 """
+    certificate_only(c) -> Bool
+
+Whether `c` is a stateless element added only by a certificate variant of a system (e.g. the
+constant-power sinks of `integrable_loss_variant`), never part of a case.
+"""
+certificate_only(::AbstractComponent) = false
+
+"""
     reservoir_states(sys; contracts = load_contracts()) -> Vector{Int}
 
 The one-way accounting states: each component's reservoir state as its port contract
-declares it. A component type without a contract is an error (fail closed).
+declares it. A component type without a contract is an error (fail closed), except the
+stateless certificate-only elements of a variant (`certificate_only`), which have no
+reservoir.
 """
 function reservoir_states(sys::DAESystem; contracts::ContractSet = default_contracts())
     out = Int[]
     for (k, c) in enumerate(sys.comps)
+        certificate_only(c) && continue
         entry = contract(contracts, model_type(c))
         res = get(entry.raw, :reservoir, nothing)
         res isa JSON3.Object || continue

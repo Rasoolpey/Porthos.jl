@@ -3,50 +3,157 @@
 Read this first in a new session, then `docs/ROADMAP.md` (its Part I banner: parity is
 frozen) and `README.md`. Updated at the end of every session.
 
-Last reviewed: 2026-09-30 (end of session: steps 3 and 4 done, step 5 in progress; the
-GENROU strain-energy structure found).
+Last reviewed: 2026-09-30 (the storage completion done and rejected as the primary physical
+H_ext under rule 4; kept as the benchmark `V_completion`; the two closing diagnostics: the
+decay-rate bisection done, the backward block elimination running; next the small-system
+physical extension).
 
 ## Start here (hand-off for the next conversation)
 
 **Where things stand.** The simulator port is done and parity is frozen (pack v6 published).
 The ROA pipeline (`src/roa/`) certifies the quadratic scaffold `V_P` on IEEE-39 (level
-`1.714e-10`, `ROACheck` passes). The port-power audit (step 4) showed that GENROU's rotor,
-with PHPS's declared magnetic storage `Q`, exchanges energy with the stator through a
-non-exact one-form (5a). The decisive new result (commit `cdc429b`,
-`rotor_gradient_metric`): **GENROU admits the Nishino-Chakrabortty-Ishizaki strain-energy
-gradient structure** with a different metric `M` (all 10 units: `M > 0`, `U_rot = -z'MAz/2`
-convex, `M B_s = -Psi''^T` at 1e-16). So the obstruction belongs to PHPS's `Q`, not to
-GENROU; on a lossless network the armature reaction becomes an exact gradient of
-`U_rot + U_net`. What remains outside that structure: the speed voltage (`E'' = omega psi''`,
-`Te = Pe/omega`), the network conductances, the ComplexLoad corrections, and the field/AVR
-port (`y_fd^U = B_f'M z'`, audit/certificate only; runtime `i_fd` unchanged). Details: 5a and
-5 below, `docs/LITERATURE_FINDINGS.md`.
+`1.714e-10`, `ROACheck` passes). Step 5a showed that PHPS's declared GENROU storage `Q`
+leaves a non-exact stator exchange; `cdc429b` showed that GENROU admits the
+Nishino-Chakrabortty-Ishizaki strain-energy structure with a metric `M`. **Step 5b (this
+session, `src/ph/strain.jl`, `scripts/strain_energy_check.jl`, about 2.5 minutes):**
+- the structure holds for all 11 rotors, the GENSAL included (`strain_rotor`,
+  `strain_metric`; GENSAL's saturation enters as a field input and is inactive here);
+- the identity `dU_ext/dt = -z'Mz' + Efd B_f'Mz' + sum Te delta' + residual` is exact to
+  2e-14 along the flow (equilibrium, random states, the fault trajectory), with every
+  residual term in closed form. With `dU_net/d delta = Te = Pe/omega` exactly. On the lossless
+  variant the residual is only the speed voltage and the ComplexLoad filter lag; on the case
+  network the conductance term dominates (up to 125 against a rotor dissipation of 26);
+- the joint candidate `U_ext + sum omega_b H (omega - 1)^2` (torque-consistent kinetic
+  storage) has a Bregman Hessian **positive semidefinite on every machine and network
+  coordinate** (the 13 negative directions of 5a's `H_w` are gone); its only negative
+  directions are the 16 ComplexLoad filter states, fixed by a small gauge `5 dz^2/2`;
+- **local decay fails because of the network losses, not the machines.** Supply-shifted
+  candidate `S'` and the exact decomposition of its rate into second-order terms
+  (`strain_decay_forms`, closes to 4e-15): with the plant alone (controller states frozen)
+  13 to 17 of 83 directions create energy (up to 7 to 15 /s). The creators are the
+  equilibrium loss currents times the KCL-branch curvature (`loss_curvature`, up to 86 /s
+  alone), the incremental conductance one-form (13 to 17 /s), the ComplexLoad active part
+  (21 to 26 /s) and the load lag (energy-creating at every inductive load); the speed voltage
+  is minor (0.9 /s), the COI coupling 3.5 /s. Details in 5b below.
 
-**Next step (5b): verify the joint strain-energy identity and measure its residuals.**
-1. Build `U_ext = U_rot(z) + U_net`, with `U_net = U_B(V) + sum_k [|E_k|^2/(2x'') - E_k . V_k / x'']`
-   (internal EMF `E_k = (-psi_q'', psi_d'')` rotated by `delta_k - pi/2`, with `omega = 1` as in
-   the paper; `U_B` is `network_potential`, which already contains the Norton `-1/x''` on the
-   bus diagonal). Include GENSAL's internal node as well, so that `dU_net/dV = 0` is KCL, and
-   the ComplexLoads' reactive corrections through their own potential `int q(v)/v dv`.
-2. On `lossless_variant(sys)` along the flow (KCL-consistent samples from
-   `power_audit_samples`, `V'` from `kcl_solve`), check
-   `d/dt U_ext = -z'^T M z' + Efd B_f^T M z' + sum_k P_int,k delta_k'`; report the residual and
-   attribute it: it should be the speed-voltage `(omega - 1)` terms only. Then on the lossy
-   network: the conductance part (closed form in `polar_balance`).
-3. Joint candidate: a torque-consistent kinetic storage (with `Te = Pe/omega` the swing gives
-   `2H omega omega' = Tm - Pe`, so `sum H omega^2` in the raw layer, its Bregman form for
-   decay) plus `U_ext`; Bregman Hessian on the 171-coordinate quotient (`quotient_hessian`)
-   and a local decay margin (the pattern of `exchange_dissipation_forms`).
-4. Field/AVR: test the machine-exciter cross-term `-(Efd - Efd*) r`, `r = B_f^T M (z - z*)`,
-   through the joint Hessian and decay (the field-port decision in 5).
-Reuse: `rotor_structure` (now with `Psi`), `rotor_gradient_metric`, `kcl_solve`,
-`lossless_variant`, `network_potential`, `polar_balance`, `quotient_hessian`,
-`power_audit_samples`. Then: Route-B-guided exact scalar repair of any residual curvature or
-decay, and the interval certificate of the joint `H_ext` (steps 6 and 7). A recorded side option
-for after 5b: dynamic π lines (and stator transients) as port-Hamiltonian subsystems, which
-make line resistance explicit dissipation instead of a non-exact transfer conductance (end of
-step 5). Probe small and
-bound long runs (the quotient Hessians take about 50 s each).
+**Method decision (2026-09-30): keep the present plant and complete the storage.** Do not
+reclassify the active loads as unclosed external supplies: that would prove an open-system
+dissipativity statement, not attraction of the closed IEEE-39 model. Keep the physical
+strain energy as a named core and add the smallest exact, reference-invariant scalar repair
+needed for positivity and decay. Solve the controller and loss problems together, in this
+order:
+1. Add quadratic curvature on the four feedback states of each IEEET1 (not its one-way
+   reservoir) and fix the physical cross-term `-(Efd-Efd*) B_f^T M(z-z*)`. Determine the
+   remaining exciter blocks/cross-terms from a structured local LMI. Treat each governor in
+   the same joint machine-controller LMI; do not require a standalone passive governor,
+   which the port tests have already ruled out.
+2. With all controller states included, rerun the local decay decomposition. Only then use
+   Route B to rank free network/load cross-terms and solve a constrained completion:
+   preserve the Hessian of the physical core, allow sparse scalar corrections on the
+   identified load/network/controller blocks, and require `P > 0`, `sym(PA) < 0` on the
+   quotient. Check every selected block under other reference machines or the COI basis.
+3. Lift the successful quadratic blocks to explicit nonlinear scalar terms and keep the
+   report split as `H_ext = H_physical + H_controller + H_repair`. Certify the full scalar;
+   do not call `H_repair` physical energy.
+4. If the constrained completion is infeasible or needs a nearly dense repair, return to a
+   physical model extension: dynamic network/bus energy states and passive load models.
+   Dynamic π lines alone are not expected to fix this case because the dominant conductance
+   is in load shunts. A load port is useful only when it is closed by a specified passive
+   load subsystem and its storage; leaving its supply open does not establish an ROA.
+
+**Completion result (2026-09-30; `src/ph/sink.jl`, `src/ph/completion.jl`,
+`structured_completion` in the JuMP extension, `scripts/storage_completion.jl`, about 15
+minutes, report `outputs/completion/storage_completion.txt`; tests in `test/unit/ph.jl`).**
+- *Stage-1 plant (user's choice):* the plain `lossless_variant` has no equilibrium at the
+  IEEE-39 dispatch (no active consumption, while Tm sums to about 58 pu). Stage 1 uses the
+  **integrable-loss equivalent** `integrable_loss_variant(sys, x*, V*)`: G and the ComplexLoad
+  active part removed, each bus's equilibrium loss power (36 buses, 61.4 pu) drawn by a
+  certificate-only `ConstantPowerSink` with the exact potential `P theta + Q ln|V|`. Same
+  equilibrium (3e-13), identity exact (7e-14), residual only speed voltage and load lag.
+  `certificate_only` exempts the sinks from the contract lookup; the case model is unchanged.
+- *Physical core there:* the Hessian of S' has one negative machine direction (-2.2; the
+  constant-power sinks and the frozen-z reactive loads soften the network) and 18 load ones.
+  A per-load filter-error term `kappa (|V| - Vini - z)^2 / 2` (kappa >= 5) removes the machine
+  one; a diagonal `c (z - z*)^2 / 2` the load ones. These two are the load repair basis.
+- *LMI* (`structured_completion`: `P = Hfix + F + sum k_j B_j`, max `t` with `P >= tI`,
+  `-(A'P + PA) >= tI`, power-of-two Lyapunov scaling; Hypatia): with only the own-unit
+  controller blocks (exciter 3x3 on xa, xe, xf, since xr is held with TR = 0; governor blocks;
+  their cross-blocks with the machine), the field cross-terms fixed and the load terms:
+  **infeasible**, t = -0.069. The binding dual is on omega and delta (the decay constraint
+  binds, tr Z_R = 1); Route B ranks angle-speed couplings between machines first. Per-machine
+  `eps_k Ddelta_k Domega_k` terms: -0.065; the free swing block: -0.037. A dual-guided greedy
+  search (three component-pair blocks per round) reaches t > 0 after 15 rounds and 39 blocks
+  (exciter-exciter between units, machine-machine, the big machine with exciters): interval-
+  verified, t = 1.3e-4. Its reference-invariant closure (`invariant_closure`: 2806 free
+  entries, 19 % of the symmetric matrix) gives t = 5.6e-3, interval-verified.
+- *Stage 2, real plant:* the same closed pattern certifies immediately, **no extra
+  loss-specific block needed**: t = 1.19e-3, interval `P_min >= 0.0039..0.0045`,
+  `decay_min >= 0.0012`, cond(P) 3.7e5 to 4.2e5.
+- *Lift:* `storage_completion` / `completion_energy` give the explicit nonlinear
+  `H_ext = H_physical + H_controller + H_repair` (S' with the field cross-terms; the
+  controller quadratic; inter-unit quadratics and the load terms through `|V(x)|`); its
+  Hessian equals the LMI matrix to 8e-16, gradient 4e-13.
+- *Size of the repair (the rule-4 question):* 2070 repair entries (14 % of the matrix) after
+  the invariant closure; a group-sparsity solve (SOC per component pair, 263 groups, hit its
+  20-minute cap at a feasible iterate) leaves 202 groups above 1e-2 of the largest, the
+  largest being the machines' **own** blocks (the rotor physical Hessian is reshaped, not
+  only coupled); pruning at 1e-3 / 1e-2 re-closes to the same pattern. In scaled Frobenius
+  norm (max-margin solution) physical 681, controller 1.7e3, repair 1.75e3. So: feasible and
+  interval-certified locally, but neither sparse nor small, the margin is small (t ~ 1e-3)
+  and cond(P) ~ 4e5. The repair was already needed on the integrable-loss plant, so the
+  obstruction is the machine-controller-network coupling (AVRs sensing |V|, the swing
+  couplings), not the losses.
+
+**Rule-4 decision (2026-09-30): reject this completion as the primary `H_ext`.** Keep it as
+an exact local Lyapunov/existence witness and a diagnostic benchmark, but do not spend the
+ROA-certificate effort on it yet. The decisive evidence is structural rather than the raw
+14 % entry count: 202 of 263 component-pair groups remain significant, the free repair
+reshapes the machines' own Hessian blocks, both the controller and repair norms exceed the
+physical core, and the verified margin is small with condition number about `4e5`. It no
+longer supports the intended statement "physical strain energy plus a modest correction."
+
+Before changing the plant, close the negative result with two capped diagnostics, not an
+open-ended sparsity run:
+1. Compute the generalized decay rate of the present solution and maximize a *normalized*
+   rate `mu` by bisection on `-(A'P+PA) >= 2mu P`, with explicit condition-number caps in the
+   scaled coordinates. The present absolute `t` is scaling dependent.
+2. Starting from the feasible pattern, use block backward elimination at a fixed useful
+   `mu` and condition cap. Record an infeasible dual certificate when removing a group fails.
+   Stop when a complete pass removes nothing; this decides indispensability more directly
+   than waiting for the group-SOC objective to converge.
+
+**Diagnostics so far (2026-09-30; `completion_rate_feasibility` and
+`generalized_decay_rate`, the benchmark is named `V_completion`).**
+- *Normalised decay rate* `mu` (largest with `-(A'P+PA) >= 2 mu P`, coordinate-invariant):
+  the max-margin `V_completion` has only `mu = 5.2e-4 /s` (cond 3.7e5). Bisection over the same
+  pattern (geometric on [5e-4, 0.027]; 0.027 = -max Re eig(A), the IEEEG3 hydro-governor mode,
+  bounds every quadratic Lyapunov function): uncapped `mu* in [0.0120, 0.0128]` (the upper
+  end certified: converged negative margin), cond 6.3e5; cap `cond <= 1e6`: `mu >= 0.0120`
+  (cond 1.4e5); cap `1e5`: `mu >= 0.0113` (cond 1.0e5). For the capped runs the upper ends are
+  time limits (900 s), not certificates. So the pattern supports about 44 % of the spectral
+  bound with cond about 1e5.
+- *Backward block elimination* at `mu = 0.006`, cap `1e5` (40 units: the 39 recorded pairs and
+  the swing block; each test re-closes the pattern). A test is: the uncapped max-margin
+  problem at rate `mu` (a converged `t < 0` is an infeasibility certificate even without a
+  cap, saved with its duals); if feasible but worse conditioned than the cap, the capped
+  feasibility problem decides. Single-removal pass first (a block indispensable with all
+  others present is indispensable in every sub-pattern), then a sequential pass over the
+  individually removable ones. First results: `IEEET1_10 x IEEET1_11` indispensable; five
+  others removable; each removal takes out only 9 to 19 entries after re-closure. **In
+  progress** (about 12 minutes per test; three workers at most on this 16 GB machine; six
+  ran out of memory).
+
+Then move to a physical extension, but treat it as a machine-network-load-controller model,
+not a π-line-only change. Retain dynamic line/bus electromagnetic energy, close shunt and
+ComplexLoad power through specified passive load dynamics, and give the exciter field and
+governor actuator/steam paths physical two-way storage ports. Re-run the own-unit passivity
+and compositional-storage gates before an IEEE-39 model is built. Stage 1 already shows that
+network lifting alone may leave the AVR/swing inter-unit obstruction.
+
+Reuse: `strain_balance`, `strain_decay_forms`, `completion_problem`, `completion_pattern`,
+`structured_completion` (max margin, L1 or group sparsity), `storage_completion`,
+`quotient_hessian`, `integrable_loss_variant`. Probe small and bound long runs (a quotient
+Hessian takes about 50 s, a completion LMI 2 to 6 minutes, a sparsity solve over 20).
 
 **Working rules to keep:** commits only when the user asks, with the owner's Git identity and
 no AI attribution trailer (`Co-Authored-By`, `Signed-off-by` or similar); do not change
@@ -382,6 +489,54 @@ repository owner's configured identity: never add AI `Co-Authored-By` or similar
    (full-order machine with stator transients), checking incremental passivity (Bregman
    Hessian and decay) with and without line resistance, as a reference for how much of the
    RMS conductance residual is an artefact of the quasi-static reduction.
+5b. **The joint strain-energy identity and its local decay (2026-09-30; `src/ph/strain.jl`,
+   `scripts/strain_energy_check.jl`, about 2.5 minutes, report in
+   `outputs/strain/strain_energy_check.txt`; tests in `test/unit/ph.jl`).**
+   - *Storage.* `U_ext = U_rot + U_net`: `U_rot = -z'MAz/2` per rotor (`strain_rotor`,
+     `strain_metric`: the 10 GENROU and the GENSAL, whose one-state q axis has
+     `M = Tq0''/(xq - xq'')`; its saturation is read as the field input `u_f = Efd - Sat (xd - xl)`);
+     `U_net = U_B(V) + sum_k [|E1_k|^2/(2x'') - E1_k . V_k/x''] + sum_L U_L` with the
+     nominal-speed EMF `E1 = (-psi_q'', psi_d'')`, and the ComplexLoad reactive potential
+     `U_L = Q_act(z) ln v - Q0 v^2/(2V0^2) - Phi(z)`, `Phi = Q_act (ln s - 1/kqv)`,
+     `s = Vini + z` (valid in the load law's middle band `udmin < |V| < udmax`; samples
+     outside it are skipped: 10 of the healthy trajectory records on the case).
+   - *Identity* (`strain_balance`, closed form of every term, error 2e-14 relative):
+     `dU_ext/dt = -z'Mz' + Efd B_f'Mz' + sum Te delta'` + GENSAL saturation
+     + speed voltage `(i1 - i) . Psi z' + (omega - 1) E1 . V'/x''` + conductances
+     `[-jGV] . V'` + ComplexLoad active part `[-jGpV] . V'` + load lag
+     `(ln v - ln s) dQ_act/dz z'`. `dU_net/d delta_k = Te_k = Pe_k/omega_k` exactly. The lag has
+     the sign of `Q0` (`t1 z' = v - s`): it creates energy at the 18 inductive loads (of 19).
+     On the lossless variant the residual is the speed voltage and the lag only (as
+     predicted); on the case network the conductance term dominates.
+   - *Kinetic storage.* With `Te = Pe/omega` and `Tm/omega`, `K = sum omega_b H (omega - 1)^2`
+     pairs exactly with `Te delta'`: `dK/dt + sum Te delta' = sum omega_b (omega - 1) Tm/omega
+     - omega_b (omega_coi - 1) sum Te` (D = 0 on every machine). With constant `Tm` this leaves
+     the dissipation `-omega_b Tm (omega - 1)^2/omega` and a COI coupling term.
+   - *Hessians* (quotient, 171 coordinates, at the equilibrium; `omega* = 1`, `Tm* = Te*`):
+     the Bregman form of `U_ext + K` has no negative direction on the 64 machine coordinates
+     and 16 on the 19 ComplexLoad filter states (the `-Phi` gauge gives `U_zz = -Q'/s`); a
+     gauge `c_L dz^2/2` with `c_L >= 5` makes it positive definite on the plant (min 0.51).
+     The 88 zero directions are the controllers (no storage yet).
+   - *Decay.* `S' = U_ext + K - sum u_f* B_f'Mz - sum Tm* delta - c*'V`,
+     `c* = -j(GV* + Gp*V*)`, removes every exact first-order supply (gradient 3e-13 at the
+     equilibrium); its rate is a sum of second-order terms whose quadratic forms
+     `strain_decay_forms` returns (sum = `sym(H A)` to 4e-15). The Bregman form of
+     `U_ext + K` is `S' + C` with `C = Hess(c*'V(eta))`. On the plant (controller states
+     frozen, load gauge 5), against the candidate's own Hessian: family `S' + alpha C`,
+     alpha < 0.3 not positive (one machine direction), alpha = 0.5 max rate 7.3 /s (13 of 83
+     directions creating), alpha = 1 max 15 /s (17). Each term alone (max rate, alpha = 1):
+     `loss_curvature` 86, load lag 90 (5 with a larger gauge), active load 22, conductance
+     17, COI 3.5, speed voltage 0.9; rotor dissipation, the `Tm/omega` damping and the frozen
+     controllers are nonpositive. So the machines' part of the storage works; the local
+     obstruction is the network's loss currents (the constant-impedance load conductance and
+     the ComplexLoad active power) and the load lag. For comparison, the machine block with
+     frozen loads is itself unstable (+0.24 /s), so the loads cannot be left out.
+   - *Next construction:* item 4 and the loss repair are one constrained storage-completion
+     problem. Give each IEEET1's four feedback states a positive quadratic storage, impose
+     the exact field cross-term, include the governors jointly with their machines, and only
+     then add Route-B-guided network/load scalar terms. The final function must expose its
+     physical, controller and mathematical-repair pieces separately. The `M > 0` and
+     convexity checks are Float64, not interval certificates.
 6. **Construct `V_ext`**: machine energies + any independently derived exact `U_net` +
    controller terms + scalar cross terms, each
    with a stated origin. Use Route B only to diagnose missing blocks, after checking that its
@@ -441,13 +596,15 @@ level) and `roa_check.json`.
   does; hashing a GNU-tar extraction on Windows gives a different (wrong) hash.
 - The ROA pipeline and the review closures are committed as one commit (2026-09-30) after a
   green full suite (3043 passes, 2 intentional GFL skips, no failures, 14.5 min).
-- Commit state at the end of the 2026-09-30 session: `origin/master` is at `cdc429b`
-  (`rotor_gradient_metric`, the GENROU strain-energy result; everything before it pushed
-  too). Still uncommitted: the reviewer's revisions of `README.md`,
-  `docs/LITERATURE_FINDINGS.md` and this file (the reframed 5a claims, the field-port
-  decision, this hand-off) and the removal of `AGENTS.md` (the user found it unnecessary;
-  its standing rules are summarised in "Start here"). The last full suite: 3123 passes, 2
-  intentional GFL skips, no failures (before `cdc429b`, whose `ph` tests pass).
+- Committed on 2026-09-30 after a green full suite (3211 passes, 2 intentional GFL skips,
+  no failures, 79 min under load): step 5b, the storage completion, the diagnostics tools
+  and this file; not pushed. Before that commit, `origin/master` was at
+  `4c84d7d` (the reviewer's documentation revisions). What it contains: step 5b
+  (`src/ph/strain.jl`, `scripts/strain_energy_check.jl`, the exports, the shared per-axis
+  metric solver in `rotor_gradient_metric`, its tests, this file) and the storage completion
+  (`src/ph/sink.jl`, `src/ph/completion.jl`, `certificate_only` in `src/ph/audit.jl`,
+  `structured_completion` in the JuMP extension, `scripts/storage_completion.jl`, tests). The
+  full suite includes the new strain, variant and completion testsets.
 - Committed on 2026-10-01 after a green local suite (2926 passes, 2 intentional GFL skips,
   no failures): converter IDA comparison report-only in P7 (BDF1 is the check there); the
   droop P6 residual exception (2e-12 on its two measured-current rows, every other row
@@ -649,6 +806,14 @@ scripts/joint_storage_check.jl  Hessians and exchange-vs-dissipation (one comman
 src/ph/polar.jl           network_potential (U_B), polar_balance (lossless identity,
                           conductance part, internal-EMF supply vs exchange), conductance_curl
 scripts/polar_balance.jl  the polar network balance (one command)
+src/ph/strain.jl          joint strain energy: strain_rotor / strain_metric (GENROU, GENSAL),
+                          strain_energy (U_ext), strain_balance (the identity term by term),
+                          strain_reference / shifted_strain_energy (S'), strain_decay_forms
+scripts/strain_energy_check.jl  step 5b: metric, identity, Hessians, decay attribution (one command)
+src/ph/sink.jl            ConstantPowerSink (certificate-only), integrable_loss_variant
+src/ph/completion.jl      completion_problem, completion_pattern, invariant_closure, StorageCompletion,
+                          storage_completion, completion_energy (the lifted H_ext), completion_hessian_check
+scripts/storage_completion.jl  stage 1, stage 2, interval checks and the lift of H_ext (one command)
 parity/generate/sim.py    sim section: PHPS's compiled BDF1 / IDA runs (5 ms grid, binary)
 ext/                      PorthosMakieExt (CairoMakie); PorthosJuMPExt (JuMP), with the
                           structure-search SDP currently in progress

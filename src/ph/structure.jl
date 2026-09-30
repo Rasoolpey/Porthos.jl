@@ -126,6 +126,48 @@ it with `lyapunov_check`.
 """
 function structured_lyapunov end
 
+"""
+    structured_completion(A, Hfix, mask, basis; optimizer, mu = 0, nonnegative, silent = true)
+        -> (P, t, coefficients, F, record, dual_P, dual_rate)
+
+The constrained storage completion: `P = Hfix + F + sum_j k_j basis[j]` with `Hfix` fixed (the
+physical core and its fixed cross-terms), `F` free on the pattern `mask` (controller blocks)
+and scalar coefficients `k_j` on the structured repair matrices `basis[j]` (`k_j >= 0` where
+`nonnegative[j]`); maximises `t` subject to `P >= t I` and `-(A'P + PA) - 2 mu P >= t I`.
+`t > 0` is a strict quadratic Lyapunov function with decay rate `mu` in these coordinates
+(scale them first, e.g. by powers of two). With `weights` (on the free entries) and
+`basis_weights`, it instead minimises the weighted L1 norm of the free entries and the
+coefficients subject to `t >= t_min`: the sparsest completion with that margin. Implemented
+in the JuMP extension; the result is a candidate, to be checked (`lyapunov_check`,
+`verified_lyapunov`).
+"""
+function structured_completion end
+
+"""
+    completion_rate_feasibility(A, Hfix, mask, basis; optimizer, mu, cond_cap, nonnegative)
+        -> (feasible, gamma, P, record, dual_P, dual_cond, dual_rate)
+
+Whether the completion `P = Hfix + F + sum k_j basis[j]` (as in `structured_completion`)
+can reach the normalised decay rate `mu` with a bounded condition number: maximise `gamma`
+subject to `gamma I <= P <= cond_cap gamma I` and `-(A'P + PA) >= 2 mu P`. `feasible` when
+`gamma > 0`; otherwise the solver's duals are the (Float64) infeasibility certificate.
+`generalized_decay_rate` gives the rate of a given `P`.
+"""
+function completion_rate_feasibility end
+
+"""
+    generalized_decay_rate(P, A) -> Real
+
+The largest `mu` with `-(A'P + PA) >= 2 mu P` for `P > 0`: half the smallest eigenvalue of
+`-(A'P + PA)` against `P`. Invariant under a change of coordinates (a congruence of `P`
+with the similarity of `A`).
+"""
+function generalized_decay_rate(P::AbstractMatrix, A::AbstractMatrix)
+    L = cholesky(Symmetric((P + P') / 2)).L
+    R = -(A' * P + P * A)
+    return eigmin(Symmetric(L \ R / L')) / 2
+end
+
 # ---------------------------------------------------------------------------------------
 # Decay margin of a pattern, its dual certificate, and the ranking of missing couplings
 # (TODO.md, "Route B plan", steps 3 to 5).

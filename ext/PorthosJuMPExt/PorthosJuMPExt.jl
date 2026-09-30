@@ -102,6 +102,130 @@ function Porthos.structured_lyapunov(As::AbstractMatrix, mask::AbstractMatrix{Bo
             dual_Q = _dualmat(cQ, n), dual_rate = _dualmat(cM, n))
 end
 
+function Porthos.structured_completion(A::AbstractMatrix, Hfix::AbstractMatrix, mask::AbstractMatrix{Bool},
+                                       basis::AbstractVector; optimizer, mu::Real = 0.0,
+                                       nonnegative::AbstractVector{Bool} = fill(false, length(basis)),
+                                       weights = nothing, basis_weights = nothing, t_min::Real = 0.0,
+                                       groups = nothing, group_weights = nothing,
+                                       silent::Bool = true)
+    n = size(A, 1)
+    size(Hfix) == (n, n) && size(mask) == (n, n) || throw(DimensionMismatch("A, Hfix and mask must be $n x $n"))
+    model = Model(optimizer)
+    silent && set_silent(model)
+    F, f, entries = _pattern_matrix(model, mask)
+    @variable(model, k[1:length(basis)])
+    for (j, nn) in enumerate(nonnegative)
+        nn && @constraint(model, k[j] >= 0)
+    end
+    @variable(model, t)
+    P = Hfix .+ F
+    for (j, Wj) in enumerate(basis)
+        P = P .+ k[j] .* Wj
+    end
+    # the rate: A'(Hfix + sum k W) + (...)A in closed form, the free part entry by entry
+    R0 = A' * Hfix + Hfix * A
+    RW = [A' * Wj + Wj * A for Wj in basis]
+    RF = _lyapunov_expr(A, F, mask)
+    R = R0 .+ RF
+    for (j, Rj) in enumerate(RW)
+        R = R .+ k[j] .* Rj
+    end
+    Id = Matrix(1.0I, n, n)
+    cP = @constraint(model, Symmetric(P .- t .* Id) in PSDCone())
+    cR = @constraint(model, Symmetric(-R .- (2mu) .* P .- t .* Id) in PSDCone())
+    if groups !== nothing
+        # group sparsity: sum_g w_g ||F_g|| (second-order cones) plus L1 on the basis
+        # coefficients, subject to t >= t_min
+        @constraint(model, t >= t_min)
+        pos = Dict(e => q for (q, e) in enumerate(entries))
+        gw = group_weights === nothing ? ones(length(groups)) : collect(float(group_weights))
+        @variable(model, sg[1:length(groups)] >= 0)
+        for (g, G) in enumerate(groups)
+            idx = unique([pos[i <= j ? (i, j) : (j, i)] for (i, j) in G])
+            @constraint(model, [sg[g]; f[idx]] in SecondOrderCone())
+        end
+        bw = basis_weights === nothing ? zeros(length(basis)) : collect(float(basis_weights))
+        bpen = findall(>(0), bw)
+        @variable(model, sb[1:length(bpen)] >= 0)
+        for (r, j) in enumerate(bpen)
+            @constraint(model, sb[r] >= k[j])
+            @constraint(model, sb[r] >= -k[j])
+        end
+        @objective(model, Min, sum(gw[g] * sg[g] for g in eachindex(groups); init = 0.0) +
+                               sum(bw[j] * sb[r] for (r, j) in enumerate(bpen); init = 0.0))
+    elseif weights === nothing
+        @objective(model, Max, t)
+    else
+        # the sparsest completion with margin t >= t_min: weighted L1 of the free entries and
+        # of the basis coefficients
+        @constraint(model, t >= t_min)
+        w = [weights[i, j] for (i, j) in entries]
+        pen = findall(>(0), w)
+        @variable(model, s[1:length(pen)] >= 0)
+        for (r, e) in enumerate(pen)
+            @constraint(model, s[r] >= f[e])
+            @constraint(model, s[r] >= -f[e])
+        end
+        bw = basis_weights === nothing ? zeros(length(basis)) : collect(float(basis_weights))
+        bpen = findall(>(0), bw)
+        @variable(model, sb[1:length(bpen)] >= 0)
+        for (r, j) in enumerate(bpen)
+            @constraint(model, sb[r] >= k[j])
+            @constraint(model, sb[r] >= -k[j])
+        end
+        @objective(model, Min, sum(w[e] * s[r] for (r, e) in enumerate(pen); init = 0.0) +
+                               sum(bw[j] * sb[r] for (r, j) in enumerate(bpen); init = 0.0))
+    end
+    optimize!(model)
+    record = _solver_record(model)
+    record["free_entries"] = length(entries)
+    record["basis_terms"] = length(basis)
+    if !has_values(model)
+        return (P = fill(NaN, n, n), t = NaN, coefficients = fill(NaN, length(basis)), F = fill(NaN, n, n),
+                record = record, dual_P = fill(NaN, n, n), dual_rate = fill(NaN, n, n))
+    end
+    Fv = _values(F, f, entries, n)
+    kv = value.(k)
+    Pv = Hfix .+ Fv .+ sum((kv[j] .* basis[j] for j in eachindex(basis)); init = zeros(n, n))
+    return (P = Pv, t = value(t), coefficients = kv, F = Fv, record = record,
+            dual_P = _dualmat(cP, n), dual_rate = _dualmat(cR, n))
+end
+
+function Porthos.completion_rate_feasibility(A::AbstractMatrix, Hfix::AbstractMatrix, mask::AbstractMatrix{Bool},
+                                             basis::AbstractVector; optimizer, mu::Real, cond_cap::Real,
+                                             nonnegative::AbstractVector{Bool} = fill(false, length(basis)),
+                                             silent::Bool = true)
+    n = size(A, 1)
+    model = Model(optimizer)
+    silent && set_silent(model)
+    F, f, entries = _pattern_matrix(model, mask)
+    @variable(model, k[1:length(basis)])
+    for (j, nn) in enumerate(nonnegative)
+        nn && @constraint(model, k[j] >= 0)
+    end
+    @variable(model, g)
+    P = Hfix .+ F
+    R = (A' * Hfix + Hfix * A) .+ _lyapunov_expr(A, F, mask)
+    for (j, Wj) in enumerate(basis)
+        P = P .+ k[j] .* Wj
+        R = R .+ k[j] .* (A' * Wj + Wj * A)
+    end
+    Id = Matrix(1.0I, n, n)
+    cP = @constraint(model, Symmetric(P .- g .* Id) in PSDCone())
+    cK = @constraint(model, Symmetric((cond_cap * g) .* Id .- P) in PSDCone())
+    cR = @constraint(model, Symmetric(-R .- (2mu) .* P) in PSDCone())
+    @objective(model, Max, g)
+    optimize!(model)
+    record = _solver_record(model)
+    converged = termination_status(model) in (MOI.OPTIMAL, MOI.ALMOST_OPTIMAL)
+    feasible = converged && has_values(model) && value(g) > 0
+    Pv = has_values(model) ? Hfix .+ _values(F, f, entries, n) .+
+                             sum((value(k[j]) .* basis[j] for j in eachindex(basis)); init = zeros(n, n)) :
+         fill(NaN, n, n)
+    return (feasible = feasible, gamma = has_values(model) ? value(g) : NaN, P = Pv, record = record,
+            dual_P = _dualmat(cP, n), dual_cond = _dualmat(cK, n), dual_rate = _dualmat(cR, n))
+end
+
 function Porthos.decay_margin(As::AbstractMatrix, mask::AbstractMatrix{Bool}; optimizer,
                               weights = nothing, rate = nothing, silent::Bool = true)
     n = size(As, 1)

@@ -90,6 +90,9 @@ include("roa/check.jl")
 include("ph/exchange.jl")
 include("ph/joint_storage.jl")
 include("ph/polar.jl")
+include("ph/sink.jl")
+include("ph/strain.jl")
+include("ph/completion.jl")
 
 # PowerFactory interface (runs pf/, reads its results)
 include("io/powerfactory.jl")
@@ -137,7 +140,8 @@ export storage_components, total_hamiltonian, grad_total_hamiltonian, hessian_to
        loop_port_model, MultiPortModel, open_loops_model, multiport_margin, kyp_riccati,
        port_storage, rest_storage, port_margin, loop_margin, TerminalModel, NetworkModel,
        sync_jacobian, terminal_models, terminal_margins, state_groups, storage_pattern,
-       reference_section, lyapunov_check, structured_lyapunov, pow2_scaling, decay_margin,
+       reference_section, lyapunov_check, structured_lyapunov, structured_completion, completion_rate_feasibility,
+       generalized_decay_rate, pow2_scaling, decay_margin,
        margin_residuals, verified_min_eig, pattern_certificate, verified_lyapunov,
        rank_couplings, add_coupling!, couple_states!, section_pattern,
        component_power, network_power, power_audit_samples, port_power_audit, rotor_structure,
@@ -145,7 +149,11 @@ export storage_components, total_hamiltonian, grad_total_hamiltonian, hessian_to
        one_form_exactness, one_form_path_test, lossless_variant, exchange_curl,
        rotor_energy, shifted_kinetic_energy, quotient_hessian, exchange_dissipation_forms,
        rotor_gradient_metric,
-       network_potential, polar_balance, conductance_curl
+       network_potential, polar_balance, conductance_curl,
+       strain_rotor, strain_metric, strain_energy, strain_balance, strain_reference,
+       shifted_strain_energy, strain_decay_forms, ConstantPowerSink, integrable_loss_variant,
+       certificate_only, completion_problem, completion_pattern, invariant_closure,
+       StorageCompletion, storage_completion, completion_energy, completion_hessian_check
 # ROA certificates
 export ProofFailure, is_interval_type, interval_solve, verified_max_eig, weyl_max_eig, verified_inverse_diagonal,
        ellipsoid_half_widths, SectionModel, section_model, lift, section_coordinates,
