@@ -252,11 +252,31 @@ discussed with the user before they are implemented.
      Hessian and a useful local decay margin before attempting the nonlinear interval proof.
      If no such static candidate survives those gates, test Krasovskii/Brayton-Moser rate
      storage, followed only then by a certificate-only dynamic-supply/IQC extension.
-5. **Polar ports and the network balance** (Route A'): derive the conjugate polar supply from
-   the network energy balance (do not assume (P, omega) and (Q, |V|) are the right pairs);
-   test the lossless network first, then quantify the passivity shortage from the
-   conductances and the active (constant-power) loads. The cheapest remaining test of
-   whether unchanged dynamics admit a physically structured `H_ext`.
+5. **Polar ports and the network balance** (Route A'). **Step 1 done (2026-09-30;
+   `src/ph/polar.jl`, `scripts/polar_balance.jl`, about 1 minute; tests in `test/unit/ph.jl`)**,
+   at the equilibrium, 8 random KCL-consistent states and the healthy part of the bus-16
+   fault (70 samples):
+   - **Network, lossless part: exact.** `U_B = -1/2 sum B_ij (Vd_i Vd_j + Vq_i Vq_j)` has
+     `dU_B/dt = sum_i (P_i^B theta_i' + Q_i^B d ln|V_i|/dt)` (2.8e-13 against rates up to
+     210): the conjugate pairs derived from the identity are (P, theta) and (Q, ln|V|).
+   - **Conductance part: not exact.** `sum (P^G theta' + Q^G d ln|V|/dt) = -Im(V'^H G V)`
+     (1e-13); its curl in Cartesian voltages is `2 (G kron J)`, large on IEEE-39 (`G` up to
+     65, mostly the constant-impedance loads): transfer and shunt conductances make the
+     network balance path-dependent, as known for structure-preserving energy functions.
+   - **Machines, at the internal EMF node** `E'' = omega (-psi_q'', psi_d'')` behind `j x''`
+     (ra = 0, xd'' = xq''): the network delivers `(P_int phi' + Q_int d ln|E''|/dt)/omega_b`,
+     which is exactly `omega` times the transformer power `i . dpsi''/dt / omega_b` plus
+     `omega' i . psi''/omega_b` (1.4e-17). **It does not match the rotor exchange
+     `w'QD di/dt`**: the exchange is 5 to 50 times larger (rms 0.05 to 0.10 against 0.002
+     to 0.011) and only weakly correlated (0.16 to 0.59), so the mismatch is essentially the
+     whole exchange. The network's energy flow into the machine is the physical
+     electromagnetic power; GENROU's rotor model (armature reaction `B_s` with its time
+     constants, `psi''` blending) draws a different one. So neither a scalar potential nor
+     the swing-coupled flow identity of classical energy functions cancels the exchange; it
+     stays the explicit shortage, as decided in 5a.
+   Next per the method decision: reproduce the two-axis strain-energy identity
+   (Nishino-Chakrabortty-Ishizaki) on a reduced model, then the Route-B-guided structured
+   scalar `H_ext`.
 6. **Construct `V_ext`**: machine energies + any independently derived exact `U_net` +
    controller terms + scalar cross terms, each
    with a stated origin. Use Route B only to diagnose missing blocks, after checking that its
@@ -519,6 +539,9 @@ scripts/exchange_one_form.jl  the exactness gate on the case and its lossless va
 src/ph/joint_storage.jl   rotor_energy (gauge family H_alpha), shifted_kinetic_energy,
                           quotient_hessian (Bregman Hessians), exchange_dissipation_forms
 scripts/joint_storage_check.jl  Hessians and exchange-vs-dissipation (one command)
+src/ph/polar.jl           network_potential (U_B), polar_balance (lossless identity,
+                          conductance part, internal-EMF supply vs exchange), conductance_curl
+scripts/polar_balance.jl  the polar network balance (one command)
 parity/generate/sim.py    sim section: PHPS's compiled BDF1 / IDA runs (5 ms grid, binary)
 ext/                      PorthosMakieExt (CairoMakie); PorthosJuMPExt (JuMP), with the
                           structure-search SDP currently in progress

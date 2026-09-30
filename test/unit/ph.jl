@@ -273,3 +273,23 @@ end
     r = quotient_hessian(m, x -> shifted_kinetic_energy(sys, x))
     @test r.positive == 11 && r.negative == 0 && r.zero == Porthos.neta(m) - 11
 end
+
+@testset "polar network balance" begin
+    sc = load_scenario(joinpath(ROOT, "cases", "IEEE39Bus_PF", "bus_fault_bus16_150ms.json"))
+    eq = solve_equilibrium(load_case(sc.system_path), sc)
+    sys = eq.sys
+    smp = power_audit_samples(sys, eq.x, eq.V; n_random = 2)
+    for s in smp[2:end]
+        r = polar_balance(sys, s.x, s.V)
+        # the susceptance potential's rate is the polar supply with pairs (P, theta), (Q, ln|V|)
+        @test abs(r["lossless_identity_error"]) <= 1e-10 * max(1.0, abs(r["Udot"]))
+        @test abs(r["conductance_closed_form_error"]) <= 1e-10 * max(1.0, abs(r["conductance_rate"]))
+        for d in values(r["machines"])
+            @test abs(d["supply_vs_transformer"]) < 1e-12
+            @test d["mismatch"] ≈ d["exchange"] - d["polar_supply"]
+        end
+    end
+    C = conductance_curl(sys)
+    @test C ≈ -C' && maximum(abs, C) > 1
+    @test iszero(conductance_curl(lossless_variant(sys)))
+end

@@ -184,7 +184,8 @@ end
 
 The rotor circuits of a machine as a linear port system, restating its step kernel:
 `z' = A z + B_f Efd + B_s [id, iq]` for the rotor states `z = x[states]`, with the magnetic
-storage `H_mag = z' Q z / 2` (the declared storage minus `H (omega - 1)^2`). `nothing` for
+storage `H_mag = z' Q z / 2` (the declared storage minus `H (omega - 1)^2`) and the
+subtransient flux the stator equations use, `(psi_d'', psi_q'') = Psi z`. `nothing` for
 models whose rotor is not linear in these terms (GENSAL: saturation). The port-power audit
 checks this form against the model's right-hand side at every sample.
 """
@@ -204,7 +205,11 @@ function rotor_structure(c::GENROU_PHTRUE)
     x[2] = 1.0
     Q = ForwardDiff.jacobian(z -> (xz = Vector{eltype(z)}(x); xz[3:6] .= z;
                                    grad_hamiltonian(c, xz)[3:6]), zeros(4))
-    return (states = 3:6, A = A, Bf = Bf, Bs = Bs, Q = (Q + Q') / 2, currents = ("id_dq", "iq_dq"))
+    kd = (p.xd_double_prime - p.xl) / (p.xd_prime - p.xl)
+    kq = (p.xq_double_prime - p.xl) / (p.xq_prime - p.xl)
+    Psi = [kd 1.0-kd 0.0 0.0; 0.0 0.0 -kq 1.0-kq]    # (psi_d'', psi_q'') = Psi z, as the stator sees it
+    return (states = 3:6, A = A, Bf = Bf, Bs = Bs, Q = (Q + Q') / 2, Psi = Psi,
+            currents = ("id_dq", "iq_dq"))
 end
 
 """Norton current (network frame), independent of the bus voltage."""
