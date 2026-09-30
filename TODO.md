@@ -364,11 +364,13 @@ repository owner's configured identity: never add AI `Co-Authored-By` or similar
    eliminating the R-L dynamics in the rotating frame turns resistance into transfer
    conductance, whose one-form is non-exact (the `2 (G kron J)` curl of `polar_balance`).
    Caution: the standard static π admittance in Porthos's algebraic phasor Y-bus and a
-   dynamic π-line model are not the same system. To do before using it: check the precise
-   PH / descriptor formulations (e.g. Fiaz, Zonetti, Ortega, Scherpen, van der Schaft 2013
-   on PH power-network modelling, to be verified; Caliskan and Tabuada 2014, record 26 in
-   `docs/LITERATURE_FINDINGS.md`, with lossy dynamic lines) and map them to the Y-bus
-   (the static π is the quasi-static limit of the dynamic one). Consequences: a consistent
+   dynamic π-line model are not the same system. The construction is established in the
+   literature: Fiaz, Zonetti, Ortega, Scherpen, and van der Schaft (2013) assemble generators,
+   static loads, and physical π lines into one PH network through power-preserving graph
+   interconnections; Gernandt et al. (2021) give the corresponding circuit/Dirac formulation;
+   and Gernandt and Hinsen (2024) prove a power balance for lossy telegraph-line networks.
+   Porthos still has to derive the synchronous-dq π equations and show that their nominal-
+   frequency steady state gives exactly its Y-bus stamp. Consequences: a consistent
    dynamic network needs the machines' stator flux transients too (the `dpsi/dt` stator
    terms GENROU's quasi-static stator drops, the transformer term behind 5a); the result is
    an EMT-like, stiff model with millisecond time constants, not the frozen RMS plant, so a

@@ -515,6 +515,17 @@ uses this rate only in the storage audit. With an AVR, the incremental field sup
 `(Efd-Efd*) B_f' M zdot` suggests an exact machine-exciter cross-term; its positivity and decay
 will be tested before adoption.
 
+A physical dynamic π-line model gives another route for the conductances. Retaining the
+series-inductor and shunt-capacitor states makes every line a port-Hamiltonian subsystem, and
+the Kirchhoff connection of terminal voltage-current ports is power preserving. Line
+resistance and shunt conductance then appear as explicit dissipation inside the line. This is
+different from the present algebraic phasor Y-bus, which has eliminated those fast states and
+produces the non-exact conductance one-form measured by `polar_balance`. Before using this
+route for an ROA claim, Porthos must recover its exact Y-bus stamp as the nominal-frequency
+steady state of the dynamic π equations and justify transfer of a certificate between the
+dynamic and RMS models. The literature basis and proposed experiment are recorded in
+[docs/LITERATURE_FINDINGS.md](docs/LITERATURE_FINDINGS.md).
+
 The planned contribution is therefore to extend the published two-axis strain-energy argument
 to the four-state GENROU rotor circuits, isolate the residual terms introduced by the detailed
 model, construct a joint `H_ext`, and certify its nonlinear ROA with interval arithmetic on the

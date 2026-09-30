@@ -163,6 +163,48 @@ identify the maximal exact part, but they do not make the coexact remainder a st
    physical strain-energy construction. Use Krasovskii or dynamic-supply extensions as
    fallbacks.
 
+## Dynamic π lines: lifting the lossy algebraic network
+
+The user's observation supplies a second, physically stronger route around the conductance
+obstruction. A physical π line is an R-L series branch with shunt capacitors (and, when
+present, shunt conductances). If its inductor fluxes and capacitor charges are retained as
+states, it is a port-Hamiltonian subsystem. Kirchhoff interconnection of its terminal
+voltage-current ports is power preserving, so terminal powers cancel when the network is
+assembled. The total line balance has the form
+
+`H_line_dot = p_from + p_to - i_series' R i_series - v_shunt' G v_shunt`.
+
+Thus the **interconnection is lossless**, while a line with `R` or `G` is passive and
+dissipative rather than lossless. In a synchronous dq frame the nominal-frequency rotation
+terms belong to the skew interconnection matrix and do not change the stored energy.
+
+This is an established construction. Fiaz, Zonetti, Ortega, Scherpen, and van der Schaft
+build a complete PH power-network model from physical π-line components and a
+power-preserving graph interconnection. Gernandt, Haller, Reis, and van der Schaft give the
+general PH/Dirac construction for nonlinear RLC circuits, including resistive relations.
+Gernandt and Hinsen derive power balance and passivity for networks of lossy distributed
+transmission lines governed by the telegraph equations. Structure-preserving discretizations
+of those equations give finite-dimensional PH line models.
+
+This does not turn Porthos's present algebraic phasor Y-bus into a dynamic PH network by
+renaming it. The Y-bus has already eliminated the line's electromagnetic states. In that
+reduced model, resistance appears as transfer conductance and the polar work one-form has the
+nonzero curl measured by `polar_balance`. The dynamic π model changes the plant and adds fast,
+stiff states; transferring an ROA result back to the RMS DAE would require a proved
+singular-perturbation or invariant-slow-manifold argument.
+
+The proposed check is therefore concrete:
+
+1. derive one three-phase π line in synchronous dq coordinates and prove its PH balance;
+2. set its electromagnetic derivatives to zero at nominal frequency and recover exactly the
+   series and shunt stamps used by Porthos's Y-bus;
+3. interconnect one full-order machine, one π line, and an infinite bus and verify the joint
+   Bregman balance with `R = G = 0` and with losses;
+4. repeat on two machines, then compare the slow eigenstructure with the current RMS DAE;
+5. use this either as the physical plant for a new certificate or as the lifted model in a
+   rigorous reduction theorem. Do not claim that its certificate already applies to the
+   existing 171-state quotient.
+
 ## Recommended experiment order
 
 1. **Full strain-energy identity:** verify `U_rot + U_B` along the lossless GENROU flow and
@@ -178,7 +220,7 @@ identify the maximal exact part, but they do not make the coexact remainder a st
 6. **Dynamic extension gate:** add the smallest stable filter that gives a feasible dynamic
    supply/IQC certificate; keep those states certificate-only.
 
-## Thirty core records
+## Core records
 
 The records below were checked through Scite metadata and, where available, indexed full text.
 Links point to DOI records or open preprints.
@@ -215,6 +257,10 @@ Links point to DOI records or open preprints.
 | 28 | Stegink, De Persis, and van der Schaft, “A Unifying Energy-Based Approach to Stability of Power Grids With Market Dynamics” (2017), [DOI](https://doi.org/10.1109/TAC.2016.2613901) | Port-Hamiltonian interconnection and shifted/Bregman energy for a coupled grid model. |
 | 29 | Ishizaki and Chakrabortty, “Necessity of Lossless Transmission and Convexity of Potential Energy Function for Equilibrium Independent Passivity of Power Systems” (2021), [DOI](https://doi.org/10.1109/CDC45484.2021.9683357) | Establishes losslessness and convex potential energy as decisive conditions in a power-system model. |
 | 30 | Nishino, Chakrabortty, and Ishizaki, “A Necessary and Sufficient Condition for Equilibrium-Independent Passivity of Power Systems With Two-Axis Generators” (2026), [DOI](https://doi.org/10.1109/TAC.2025.3609489), [open preprint](https://arxiv.org/abs/2304.00987) | Most direct result: lossless transmission is necessary and strain-energy convexity characterizes the EI-passive equilibrium set; its preprint supplied the equations reproduced for GENROU. |
+| 31 | Fiaz, Zonetti, Ortega, Scherpen, and van der Schaft, “A port-Hamiltonian approach to power network modeling and analysis” (2013), [DOI](https://doi.org/10.1016/j.ejcon.2013.09.002) | Direct precedent for assembling generators, static loads, and physical π transmission-line elements through power-preserving graph interconnections. |
+| 32 | Gernandt, Haller, Reis, and van der Schaft, “Port-Hamiltonian formulation of nonlinear electrical circuits” (2021), [DOI](https://doi.org/10.1016/j.geomphys.2020.103959), [open preprint](https://arxiv.org/abs/2004.10821) | Gives a compositional PH/Dirac formulation of inductors, capacitors, resistive relations, sources, and Kirchhoff interconnection. |
+| 33 | Gernandt and Hinsen, “Stability and passivity for a class of distributed port-Hamiltonian networks” (2024), [open preprint](https://arxiv.org/abs/2212.02792) | Proves power balance, passivity, and stability results for networks of lossy telegraph-equation transmission lines under Kirchhoff-type interconnection. |
+| 34 | Šešlija, Scherpen, and van der Schaft, “Explicit simplicial discretization of distributed-parameter port-Hamiltonian systems” (2014), [DOI](https://doi.org/10.1016/j.automatica.2013.11.020), [open preprint](https://arxiv.org/abs/1201.5764) | Shows how to discretize a transmission-line PH system while preserving its Dirac/interconnection structure and boundary power ports. |
 
 ## Cross-field records that clarify the geometry
 
