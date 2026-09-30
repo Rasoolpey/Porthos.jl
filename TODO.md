@@ -140,6 +140,44 @@ discussed with the user before they are implemented.
    (sampled [0.011, 0.24]) and the negative magnetic residual is exactly the stator exchange
    (sign-indefinite, [-0.029, 0.21]): no other `Q` is needed. Step 5 must produce
    `-[id, iq]' B_s' Q z` from the stator/network energy identity so that it cancels.
+5a. **Step 5.1 finding and decision (2026-09-30, scratch probes, nothing committed): the
+   reviewer's route cannot close in the declared coordinates.** At the equilibrium the stator exchange
+   `p_s = [id, iq]' B_s' Q z` is nonzero (0.02 to 0.10 per GENROU unit, 1 to 20 times the
+   field power) while the mechanical and terminal balances are exact (`Tm = Pe`), and every
+   storage has zero rate there: no stator/network storage or lossless port can supply it. It
+   is not caused by PHPS's simplified `dEq'/dt` (no Sauer-Pai correction; PHPS
+   `genrou_phs.py` line 316): with the Sauer-Pai equation `p_s` at steady state is the same.
+   It is not the neglected transformer power `i . dpsi''/dt` either (correlation -0.6 to 0.4).
+   Cause: `H_mag(z)` is the magnetic energy at zero stator current, so `Qz` is not the rotor
+   current when stator current flows (the dampers show "current" and loss in steady state).
+   **Rotor-current coordinates close it exactly, with the same `Q` and dynamics:**
+   `w = z - D i`, `D = -A^-1 B_s`, so `z' = A w + B_f Efd`. At the equilibrium the damper
+   components of `Qw` are 0 (1e-18) and field power `Efd B_f' Q w` equals the loss
+   `-w' sym(QA) w` (1e-15), on all 10 units; the loss matrix is the one already proved
+   positive definite. Then `d/dt (w'Qw/2) = Efd B_f'Qw - w'(-sym QA)w - w'QD di/dt`: the
+   stator exchange becomes a transformer-type port `(di/dt, -D'Qw)` that vanishes at every
+   equilibrium. **Decision:** adopt `w` as the current-corrected rotor coordinate of a
+   *joint machine-network candidate*; `Qw`, rather than `w`, is the rotor-current/coenergy
+   variable. Do not replace the component-local `hamiltonian(c, x)`, which remains the
+   open-stator intrinsic audit, because the new storage depends on the algebraic current.
+   Since `i` itself depends on the states and KCL voltages, call `w` a derived variable until
+   the reduced map has been proved locally full-rank; positivity of `Q` alone does not prove
+   positivity of the equilibrium-shifted storage after this composition.
+   Define the new conjugate flow `i_fd_energy = B_f'Qw` in the energy/audit API only. Keep
+   the existing runtime `i_fd = B_f'Qz` and the IEEET1 one-way reservoir unchanged for the
+   frozen model; that legacy account is excluded from `V_ext` and must not be presented as
+   the field balance of the new joint storage. Replacing or rewiring it would require a new
+   model version after the hardware field-current base is validated.
+
+   Continue step 5 through the KCL branch: compute
+   `di/dt = (i_x - i_V g_V^-1 g_x) xdot` (or its section-coordinate equivalent), first for
+   the lossless internal-node network and one smooth mode. Do not assume a scalar `U_net`
+   exists: test whether the complementary one-form is exact (reference-angle invariant and
+   symmetric Jacobian/curl zero). If it is exact, integrate it and verify cancellation of
+   `-w'QD di/dt`; if not, retain the term as a physically motivated `V_cross`/passivity
+   shortage rather than calling it network energy. Derive the polar conjugate variables
+   only after this identity. Build the equilibrium-shifted/Bregman form of the resulting
+   joint storage on the certified KCL branch before using it as a Lyapunov candidate.
 5. **Polar ports and explicit `U_net`** (Route A'): derive the conjugate polar supply from
    the network energy balance (do not assume (P, omega) and (Q, |V|) are the right pairs);
    test the lossless network first, then quantify the passivity shortage from the
