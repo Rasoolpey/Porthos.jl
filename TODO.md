@@ -24,7 +24,8 @@ well-founded terms. Two layers (decided 2026-10-01):
 The user's standing preference: keep the component dynamics unchanged if at all possible
 (storage-only route: new storage terms, joint storages, other supply rates or ports);
 physical model changes (two-way reservoirs) are the fallback. Control-method choices are
-discussed with the user before they are implemented.
+discussed with the user before they are implemented. Commit attribution stays with the
+repository owner's configured identity: never add AI `Co-Authored-By` or similar trailers.
 
 ## Decisions (2026-10-01, user with a reviewer)
 
@@ -277,6 +278,29 @@ discussed with the user before they are implemented.
    Next per the method decision: reproduce the two-axis strain-energy identity
    (Nishino-Chakrabortty-Ishizaki) on a reduced model, then the Route-B-guided structured
    scalar `H_ext`.
+   **Two-axis reproduction, first result (2026-09-30; `rotor_gradient_metric` in
+   `src/ph/joint_storage.jl`, test in `test/unit/ph.jl`; not committed).** Source: the arXiv
+   version, Ishizaki, Nishino, Chakrabortty, arXiv:2304.00987v2 (the TAC 2026 paper's
+   preprint). Their mechanism: on a lossless network the two-axis flux dynamics are a
+   *gradient flow* of the strain energy, `tau E' = -(X - X') dU/dE + V_fd`, with
+   `P = dU/d delta`; the Bregman form of `U` is the EI storage, the flux terms give the
+   dissipation `-tau |E'|^2/(X - X')`, and losslessness is needed for the gradient to exist.
+   The GENROU question is then algebraic: per axis, a symmetric metric `M` with
+   `M B_s = -Psi''^T` (the sign fixed by the internal-EMF network potential,
+   `grad_z U_net = Psi''^T i` for `E'' = (-psi_q'', psi_d'')` behind `j x''`) and `M A`
+   symmetric. **It exists on all 10 GENROU units with `M > 0` and `U_rot = -z^T M A z / 2`
+   strictly convex** (smallest eigenvalues of `M` 0.21 to 11, of `-sym(MA)` 0.87 to 39;
+   `M B_s + Psi''^T` at 1e-16), and every machine has `ra = 0`, `xd'' = xq''`, `D = 0`. So
+   GENROU does admit the strain-energy structure; the non-exact exchange of 5a came from
+   PHPS's declared `Q`, which differs from `U_rot` (shape 0.7 to 20 %). What does not carry
+   over: (1) the speed voltage (`E'' = omega psi''` and `Te = Pe/omega` in the model, no
+   `omega` in theirs), a sign-indefinite `(omega - 1)` residual; (2) conductances (their
+   Theorem 1); (3) the ComplexLoads' voltage-dependent corrections, which need their own
+   potential; (4) the field port becomes `(Efd, B_f^T M z')` (a rate, like `V_fd E_q'` in
+   theirs), not `(Efd, i_fd)`: with constant `Efd` it drops out of the Bregman form, with an
+   AVR it is a method choice. Next: the full identity
+   `d/dt (U_rot + U_net) = -z'^T M z' + Efd B_f^T M z' + P_int delta'` on the lossless
+   variant, quantifying the speed-voltage residual.
 6. **Construct `V_ext`**: machine energies + any independently derived exact `U_net` +
    controller terms + scalar cross terms, each
    with a stated origin. Use Route B only to diagnose missing blocks, after checking that its

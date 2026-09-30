@@ -133,3 +133,29 @@ function exchange_dissipation_forms(m::SectionModel; sys::DAESystem = m.sys,
             exchange_eig = extrema(eigvals(ex)), rotor_loss_eig_max = eigmax(loss),
             network_loss_eig_max = eigmax(net))
 end
+
+"""
+    rotor_gradient_metric(rs) -> NamedTuple
+
+The Nishino-Chakrabortty-Ishizaki structure for a linear rotor (`rotor_structure`): per axis
+the symmetric `M` with `M B_s = -Psi''` (transposed) and `M A` symmetric, so that with an
+internal EMF `E'' = (-psi_q'', psi_d'')` behind `j x''` on a lossless network, whose potential
+has `grad_z U_net = Psi''' i`, the rotor dynamics are the gradient flow
+`M z' = -grad(U_rot + U_net) + M B_f Efd` of the rotor energy `U_rot = -z' M A z / 2`. Returns
+`M` (block-diagonal over the axes), `U = -sym(MA)` (the Hessian of `U_rot`), whether `M > 0`
+and `U > 0` (the metric and the convexity), and the residual of `M B_s + Psi''`. The speed
+voltage (`E'' = omega psi''` in the model) is outside this structure.
+"""
+function rotor_gradient_metric(rs)
+    M = zeros(4, 4)
+    for (idx, col, row) in ((1:2, 1, 1), (3:4, 2, 2))
+        A, b, psi = rs.A[idx, idx], rs.Bs[idx, col], rs.Psi[row, idx]
+        # unknowns (m11, m12, m22): M b = -psi, (MA)_12 = (MA)_21
+        E = [b[1] b[2] 0.0; 0.0 b[1] b[2]; A[1, 2] (A[2, 2] - A[1, 1]) -A[2, 1]]
+        m = E \ [-psi[1], -psi[2], 0.0]
+        M[idx, idx] .= [m[1] m[2]; m[2] m[3]]
+    end
+    U = -(M * rs.A + (M * rs.A)') ./ 2
+    return (M = M, U = U, metric_positive = isposdef(Symmetric(M)), convex = isposdef(Symmetric(U)),
+            residual = maximum(abs, M * rs.Bs .+ rs.Psi'), asymmetry = maximum(abs, M * rs.A .- (M * rs.A)'))
+end

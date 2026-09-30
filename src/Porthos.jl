@@ -144,6 +144,7 @@ export storage_components, total_hamiltonian, grad_total_hamiltonian, hessian_to
        current_correction, kcl_solve, rotor_current_coordinates, exchange_one_form,
        one_form_exactness, one_form_path_test, lossless_variant, exchange_curl,
        rotor_energy, shifted_kinetic_energy, quotient_hessian, exchange_dissipation_forms,
+       rotor_gradient_metric,
        network_potential, polar_balance, conductance_curl
 # ROA certificates
 export ProofFailure, is_interval_type, interval_solve, verified_max_eig, weyl_max_eig, verified_inverse_diagonal,

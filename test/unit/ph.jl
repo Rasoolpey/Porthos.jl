@@ -293,3 +293,17 @@ end
     @test C ≈ -C' && maximum(abs, C) > 1
     @test iszero(conductance_curl(lossless_variant(sys)))
 end
+
+@testset "GENROU gradient-flow metric (two-axis strain-energy structure)" begin
+    sc = load_scenario(joinpath(ROOT, "cases", "IEEE39Bus_PF", "bus_fault_bus16_150ms.json"))
+    eq = solve_equilibrium(load_case(sc.system_path), sc)
+    units = [rotor_structure(c) for c in eq.sys.comps if rotor_structure(c) !== nothing]
+    @test length(units) == 10
+    for rs in units
+        g = rotor_gradient_metric(rs)
+        @test g.metric_positive && g.convex
+        @test g.residual < 1e-12 && g.asymmetry < 1e-9 * maximum(abs, g.M * rs.A)
+        # the rotor energy of this structure is not PHPS's declared magnetic storage
+        @test norm(g.U / norm(g.U) - rs.Q / norm(rs.Q)) > 1e-3
+    end
+end
