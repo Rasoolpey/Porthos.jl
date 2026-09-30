@@ -409,7 +409,10 @@ Port in this order. Each has a gate that reproduces a recorded number or table.
     linear port system (`rotor_structure`), GENROU's rotor balances exactly with a second,
     internal stator-exchange port `[id, iq]' B_s' Q z`, and its rotor loss matrix
     `-sym(QA)` is proved positive definite: the existing storage is right, the missing piece
-    is that port, which the stator/network identity must cancel (step 5). The trajectory
+    is that port. Step 5 rewrites it in current-corrected rotor coordinates and tests what
+    the stator/network identity can cancel; the resulting one-form is non-exact on both the
+    case network and its lossless variant, so its non-exact part remains an explicit decay
+    shortage rather than a network storage. The trajectory
     samples are re-solved on their KCL branch, so every sample satisfies KCL to round-off.
   - Still open in P10: the KYP / IQC LMI solver in the JuMP extension, which comes with the
     storage search of Part II (B2, B4).

@@ -87,6 +87,7 @@ include("roa/containment.jl")
 include("roa/certificate.jl")
 include("roa/analytic.jl")
 include("roa/check.jl")
+include("ph/exchange.jl")
 
 # PowerFactory interface (runs pf/, reads its results)
 include("io/powerfactory.jl")
@@ -137,7 +138,9 @@ export storage_components, total_hamiltonian, grad_total_hamiltonian, hessian_to
        reference_section, lyapunov_check, structured_lyapunov, pow2_scaling, decay_margin,
        margin_residuals, verified_min_eig, pattern_certificate, verified_lyapunov,
        rank_couplings, add_coupling!, couple_states!, section_pattern,
-       component_power, network_power, power_audit_samples, port_power_audit, rotor_structure
+       component_power, network_power, power_audit_samples, port_power_audit, rotor_structure,
+       current_correction, kcl_solve, rotor_current_coordinates, exchange_one_form,
+       one_form_exactness, one_form_path_test, lossless_variant, exchange_curl
 # ROA certificates
 export ProofFailure, is_interval_type, interval_solve, verified_max_eig, weyl_max_eig, verified_inverse_diagonal,
        ellipsoid_half_widths, SectionModel, section_model, lift, section_coordinates,

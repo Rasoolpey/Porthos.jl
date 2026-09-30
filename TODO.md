@@ -138,9 +138,10 @@ discussed with the user before they are implemented.
    rotor loss` (2.5e-16). The rotor loss matrix `-sym(QA)` is proved positive definite for
    every GENROU unit (rigorous `lambda_min >= 4.5e-4`), so the rotor loss is nonnegative
    (sampled [0.011, 0.24]) and the negative magnetic residual is exactly the stator exchange
-   (sign-indefinite, [-0.029, 0.21]): no other `Q` is needed. Step 5 must produce
-   `-[id, iq]' B_s' Q z` from the stator/network energy identity so that it cancels.
-5a. **Step 5.1 finding and decision (2026-09-30, scratch probes, nothing committed): the
+   (sign-indefinite, [-0.029, 0.21]): no other `Q` is needed. Step 5 tests how much of this
+   exchange can be represented by the stator/network energy identity; the result is in 5a.
+5a. **Step 5.1 finding and decision (2026-09-30; the coordinate decision in `374d9b5`, the
+   exactness gate and the review wording below in the commit after it): the
    reviewer's route cannot close in the declared coordinates.** At the equilibrium the stator exchange
    `p_s = [id, iq]' B_s' Q z` is nonzero (0.02 to 0.10 per GENROU unit, 1 to 20 times the
    field power) while the mechanical and terminal balances are exact (`Tm = Pe`), and every
@@ -174,18 +175,51 @@ discussed with the user before they are implemented.
    the lossless internal-node network and one smooth mode. Do not assume a scalar `U_net`
    exists: test whether the complementary one-form is exact (reference-angle invariant and
    symmetric Jacobian/curl zero). If it is exact, integrate it and verify cancellation of
-   `-w'QD di/dt`; if not, retain the term as a physically motivated `V_cross`/passivity
-   shortage rather than calling it network energy. Derive the polar conjugate variables
-   only after this identity. Build the equilibrium-shifted/Bregman form of the resulting
-   joint storage on the certified KCL branch before using it as a Lyapunov candidate.
-5. **Polar ports and explicit `U_net`** (Route A'): derive the conjugate polar supply from
+   `-w'QD di/dt`; if not, retain the term as a physically motivated exchange/passivity
+   shortage rather than calling it network energy or scalar storage. Derive the polar
+   conjugate variables only after this identity. Build the equilibrium-shifted/Bregman form
+   of the resulting joint storage on the certified KCL branch before using it as a Lyapunov
+   candidate.
+   **Result of the exactness gate (2026-09-30; `src/ph/exchange.jl`,
+   `scripts/exchange_one_form.jl`, about 30 s; tests in `test/unit/ph.jl`): the one-form is
+   not exact, so no scalar `U_net` cancels the exchange.**
+   - `w = z - D i` verified on all 10 GENROU units at the equilibrium (damper currents 1e-17,
+     field power = loss 4e-15); `i_fd_energy = B_f'Qw` differs from the runtime `i_fd` by 1
+     to 55 % (the runtime output and the IEEET1 reservoir are unchanged).
+   - `di/dt` through the KCL branch: `kcl_solve` iterates with the Float64 `g_V` at the
+     converged point (zero contraction on the dual parts), so duals carry the exact
+     implicit-function derivatives; they match finite differences to 1.4e-8.
+   - Reference angle: the stator currents are invariant under a common rotation (1e-14), so
+     the one-form `a . d eta`, `a = (dI/d eta)' D'Qw`, is well defined on the quotient.
+   - Exactness: the Jacobian of `a` is not symmetric: relative curl 0.109 on the case
+     network, 0.113 on the lossless variant (`lossless_variant`: every conductance, active
+     load and ComplexLoad `P0` removed); antisymmetric/symmetric part 6.8 % (Frobenius);
+     path integrals over a 1e-2 path differ by 2e-6 of 5e-3. The curl has a closed form,
+     `(dI/d eta)' D'Q (dz/d eta) - transpose` (matches the measured Jacobian to 1.4e-16):
+     writing `a . d eta = -d(I'D'QD I / 2) + (D'Qz)' dI`, the second part is not exact
+     because the rotor states and the stator currents vary independently on the KCL branch.
+     This is intrinsic to the machine coupling, not to the network losses.
+   - **Decision:** retain the non-exact one-form as an explicit, sign-indefinite exchange
+     shortage in `V_ext`'s decay identity. Do not call the one-form `V_cross`: it is not a
+     scalar storage. Splitting off the exact scalar `F = I'D'QD I / 2` gives the gauge family
+     `H_alpha = H_w - alpha F`; changing `alpha` redistributes an exact differential but
+     cannot change the curl. Use `alpha = 0` (the raw nonnegative rotor energy `H_w`) as the
+     baseline, and test `alpha = 1` and any later structured scalar cross-terms only through
+     the equilibrium-shifted/Bregman Hessian on the quotient
+     and the decay calculation. In particular, `H_w - F = z'Qz/2 - z'QD I` is not positive
+     merely because `F` is exact. A coordinate change, including polar coordinates, cannot
+     remove the curl; only an independently derived physical supply may cancel it. If the
+     shortage is not dominated by proved losses, use structured exact scalar cross-terms
+     (guided by Route B) or a dynamic extension, and state which construction was used.
+5. **Polar ports and the network balance** (Route A'): derive the conjugate polar supply from
    the network energy balance (do not assume (P, omega) and (Q, |V|) are the right pairs);
    test the lossless network first, then quantify the passivity shortage from the
    conductances and the active (constant-power) loads. The cheapest remaining test of
    whether unchanged dynamics admit a physically structured `H_ext`.
-6. **Construct `V_ext`**: machine energies + `U_net` + controller terms + cross terms, each
+6. **Construct `V_ext`**: machine energies + any independently derived exact `U_net` +
+   controller terms + scalar cross terms, each
    with a stated origin. Use Route B only to diagnose missing blocks, after checking that its
-   blocks survive a change of reference angle (or an orthonormal COI basis) and the explicit
+   blocks survive a change of reference angle (or an orthonormal COI basis) and any exact
    `U_net`. Controllers that cannot be passive alone (IEEEG1: relative degree 2; IEEEG3:
    right-half-plane zero) need a joint machine-governor storage or another port.
 7. **Certify `V_P` and `V_ext`** through the same single-mode pipeline and compare the sets.
@@ -436,6 +470,11 @@ src/ph/power.jl           port-power residual audit: component_power, network_po
                           power_audit_samples, port_power_audit
 scripts/port_power_audit.jl  the audit at the equilibrium, random states and the fault
                           trajectory (one command)
+src/ph/exchange.jl        GENROU stator exchange through the KCL branch: current_correction,
+                          kcl_solve (implicit-function duals), rotor_current_coordinates,
+                          exchange_one_form, one_form_exactness, one_form_path_test,
+                          exchange_curl, lossless_variant
+scripts/exchange_one_form.jl  the exactness gate on the case and its lossless variant
 parity/generate/sim.py    sim section: PHPS's compiled BDF1 / IDA runs (5 ms grid, binary)
 ext/                      PorthosMakieExt (CairoMakie); PorthosJuMPExt (JuMP), with the
                           structure-search SDP currently in progress

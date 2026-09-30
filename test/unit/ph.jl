@@ -224,3 +224,33 @@ end
     @test maximum(abs, dae_residual(eq.sys, eq.x, Vf; faults_on = true)[2]) < 1e-10
     @test maximum(abs, Vf .- eq.V) > 1e-2
 end
+
+@testset "stator exchange through the KCL branch" begin
+    sc = load_scenario(joinpath(ROOT, "cases", "IEEE39Bus_PF", "bus_fault_bus16_150ms.json"))
+    eq = solve_equilibrium(load_case(sc.system_path), sc)
+    # current-corrected rotor coordinates: no damper current and field power = loss at rest
+    rc = rotor_current_coordinates(eq.sys, eq.x, eq.V)
+    @test length(rc) == 10
+    @test all(r -> maximum(abs, r.Qw[2:4]) < 1e-12 && abs(r.field_supply - r.loss) < 1e-12, values(rc))
+    @test all(r -> r.i_fd_runtime != r.i_fd_energy, values(rc))     # the runtime i_fd is unchanged
+    # the KCL branch derivatives through kcl_solve match finite differences
+    m = section_model(eq; scale = :none)
+    n = Porthos.neta(m)
+    u = normalize(randn(Random.Xoshiro(8), n))
+    h = 1e-6
+    fd = (exchange_one_form(m, h .* u) .- exchange_one_form(m, -h .* u)) ./ (2h)
+    ad = ForwardDiff.derivative(t -> exchange_one_form(m, t .* u), 0.0)
+    @test norm(ad - fd) <= 1e-6 * norm(ad)
+    # the one-form is not exact, on the lossless variant too, and its curl has the closed form
+    sysL = lossless_variant(eq.sys)
+    @test iszero(sysL.G) && iszero(sysL.load.G)
+    VL = solve_network(sysL, eq.x, eq.V)
+    for (sys, V0) in ((eq.sys, eq.V), (sysL, VL))
+        r = one_form_exactness(m, zeros(n); sys, V0, pairs = 1, seed = 5)
+        @test r.curl > 1e-2
+        W = exchange_curl(m, zeros(n); sys, V0)
+        rng = Random.Xoshiro(5)
+        uu, vv = normalize(randn(rng, n)), normalize(randn(rng, n))
+        @test only(r.pairs).vJu - only(r.pairs).uJv ≈ dot(vv, W * uu) rtol = 1e-8
+    end
+end

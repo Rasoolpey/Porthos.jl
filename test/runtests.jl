@@ -3,6 +3,7 @@ using Test
 using SparseArrays
 using LinearAlgebra
 using ForwardDiff
+using Random
 
 const ROOT = normpath(joinpath(@__DIR__, ".."))
 
