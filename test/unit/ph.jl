@@ -209,4 +209,18 @@ end
     @test all(d -> abs(d["storage_rate"]) < 1e-9, at_eq)
     @test all(d -> d["magnetic_residual"] > 0, filter(d -> haskey(d, "magnetic_residual"), at_eq))
     @test !bt["COMPLEXLOAD"]["complete"]                 # its contract port is not an expression
+    # GENROU's rotor as a linear port system: the form matches the model, the field port is
+    # colocated, the balance closes with the stator-exchange port, and the rotor loss matrix
+    # is proved positive definite (the magnetic residual is exchange, not creation)
+    @test id["rotor_model"] < 1e-12 && id["field_colocation"] < 1e-12 && id["rotor_identity"] < 1e-12
+    g = bt["GENROU_PHTRUE"]
+    @test g["rotor_loss_matrix_min_eig_lower_bound"] > 0 && g["rotor_loss_min"] > 0
+    rows = [d for smp in a["per_sample"] for d in smp["components"] if haskey(d, "rotor_loss")]
+    @test length(rows) == 10 * length(smp)
+    @test all(d -> abs(d["magnetic_residual"] - (d["rotor_loss"] - d["stator_exchange"])) < 1e-12, rows)
+    @test rotor_structure(eq.sys.comps[findfirst(c -> model_type(c) == "GENSAL_PHTRUE", eq.sys.comps)]) === nothing
+    # a fault-on KCL solve: the voltages differ from the healthy ones and satisfy the fault KCL
+    Vf = solve_network(eq.sys, eq.x, eq.V; faults_on = true)
+    @test maximum(abs, dae_residual(eq.sys, eq.x, Vf; faults_on = true)[2]) < 1e-10
+    @test maximum(abs, Vf .- eq.V) > 1e-2
 end

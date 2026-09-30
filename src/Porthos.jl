@@ -137,7 +137,7 @@ export storage_components, total_hamiltonian, grad_total_hamiltonian, hessian_to
        reference_section, lyapunov_check, structured_lyapunov, pow2_scaling, decay_margin,
        margin_residuals, verified_min_eig, pattern_certificate, verified_lyapunov,
        rank_couplings, add_coupling!, couple_states!, section_pattern,
-       component_power, network_power, power_audit_samples, port_power_audit
+       component_power, network_power, power_audit_samples, port_power_audit, rotor_structure
 # ROA certificates
 export ProofFailure, is_interval_type, interval_solve, verified_max_eig, weyl_max_eig, verified_inverse_diagonal,
        ellipsoid_half_widths, SectionModel, section_model, lift, section_coordinates,

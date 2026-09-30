@@ -114,6 +114,32 @@ discussed with the user before they are implemented.
      coordinates); GENSAL shows the structure that works.
    - ComplexLoad's contract port is prose, not an expression, so its port is not evaluated
      (its power identity is checked on the network side).
+   ~~Review before pushing~~ (done 2026-09-30): the trajectory voltages are now re-solved on
+   the healthy or fault-on KCL branch (`solve_network(...; faults_on)`), so every sample
+   satisfies KCL to round-off (`|V . g| <= 3e-13`, was `1.14e-3` from IDA's tolerance). It
+   does not change GENROU's `-2.18e-2` magnetic residual, which also appears in the
+   KCL-consistent near-equilibrium samples.
+   **GENROU method decision:** keep the dynamics unchanged and first derive the exact
+   quadratic rotor-circuit identity. With `z = (Eq', psi_d, Ed', psi_q)`, write
+   `zdot = A z + B_f Efd + B_s [id, iq]` and
+   `H_mag = z' Q z / 2`; the existing `i_fd` already checks the field colocation
+   `B_f' Q z`. Declare the missing bilinear term `[id, iq]' B_s' Q z` as an internal
+   stator-exchange port and prove that the remaining quadratic term is nonnegative rotor
+   loss. In step 5, require the opposite stator-exchange supply to appear in the explicit
+   stator/network energy identity, so it cancels on interconnection. Only if the completed
+   identity leaves an indefinite rotor-loss term should a different `Q` be sought, constrained
+   by the same field and stator port colocation. Keep raw physical power (`H omega^2`, `Tm`)
+   separate from the equilibrium-shifted/Bregman storage and its incremental supply used for
+   Lyapunov decay.
+   **Result (2026-09-30): the route works with the existing `Q`.** `rotor_structure` (in
+   `genrou.jl`) restates the rotor as `z' = A z + B_f Efd + B_s [id, iq]`; the audit checks it
+   against the right-hand side at every sample (5e-15), the field colocation
+   `i_fd = B_f' Q z` (2e-17) and the balance `dH_mag/dt = Efd i_fd + [id, iq]' B_s' Q z -
+   rotor loss` (2.5e-16). The rotor loss matrix `-sym(QA)` is proved positive definite for
+   every GENROU unit (rigorous `lambda_min >= 4.5e-4`), so the rotor loss is nonnegative
+   (sampled [0.011, 0.24]) and the negative magnetic residual is exactly the stator exchange
+   (sign-indefinite, [-0.029, 0.21]): no other `Q` is needed. Step 5 must produce
+   `-[id, iq]' B_s' Q z` from the stator/network energy identity so that it cancels.
 5. **Polar ports and explicit `U_net`** (Route A'): derive the conjugate polar supply from
    the network energy balance (do not assume (P, omega) and (Q, |V|) are the right pairs);
    test the lossless network first, then quantify the passivity shortage from the
@@ -177,9 +203,10 @@ level) and `roa_check.json`.
   does; hashing a GNU-tar extraction on Windows gives a different (wrong) hash.
 - The ROA pipeline and the review closures are committed as one commit (2026-09-30) after a
   green full suite (3043 passes, 2 intentional GFL skips, no failures, 14.5 min).
-- Step 4 (the port-power audit: `src/ph/power.jl`, `scripts/port_power_audit.jl`, tests,
-  docs) is committed (not pushed) after a green full suite (3058 passes, 2 intentional GFL
-  skips, no failures). The first CI run with pack v6 (`f53bfa0`) was still running when
+- Step 4 (the port-power audit) and the review corrections (KCL re-solve of the trajectory
+  samples, GENROU's rotor port split with the rotor-loss proof) are committed on `master`
+  but not pushed; the full suite passed with them (3065 passes, 2 intentional GFL skips, no
+  failures). Push when the user says so. The first CI run with pack v6 (`f53bfa0`) was still running when
   the session moved on; the user checks it.
 - Committed on 2026-10-01 after a green local suite (2926 passes, 2 intentional GFL skips,
   no failures): converter IDA comparison report-only in P7 (BDF1 is the check there); the

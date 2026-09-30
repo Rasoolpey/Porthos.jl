@@ -404,8 +404,13 @@ Port in this order. Each has a gate that reproduces a recorded number or table.
     swing and terminal balances close exactly against the physical kinetic storage
     `H omega^2` (with the declared shifted `H (omega - 1)^2` the `Tm` port is not conjugate);
     the remaining residual is all in the magnetic block, where GENROU's declared storage is
-    not a dissipation inequality with `Efd i_fd` as its supply (negative for 5 of 10 units,
-    near the equilibrium as well as in the fault transient); GENSAL's is.
+    not a dissipation inequality with `Efd i_fd` as its only supply (negative for 5 of 10
+    units, near the equilibrium as well as in the fault transient); GENSAL's is. Written as a
+    linear port system (`rotor_structure`), GENROU's rotor balances exactly with a second,
+    internal stator-exchange port `[id, iq]' B_s' Q z`, and its rotor loss matrix
+    `-sym(QA)` is proved positive definite: the existing storage is right, the missing piece
+    is that port, which the stator/network identity must cancel (step 5). The trajectory
+    samples are re-solved on their KCL branch, so every sample satisfies KCL to round-off.
   - Still open in P10: the KYP / IQC LMI solver in the JuMP extension, which comes with the
     storage search of Part II (B2, B4).
 

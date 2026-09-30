@@ -179,6 +179,34 @@ function grad_hamiltonian!(g, c::GENROU_PHTRUE, x, p::GenrouParams)
     return g
 end
 
+"""
+    rotor_structure(c) -> NamedTuple or nothing
+
+The rotor circuits of a machine as a linear port system, restating its step kernel:
+`z' = A z + B_f Efd + B_s [id, iq]` for the rotor states `z = x[states]`, with the magnetic
+storage `H_mag = z' Q z / 2` (the declared storage minus `H (omega - 1)^2`). `nothing` for
+models whose rotor is not linear in these terms (GENSAL: saturation). The port-power audit
+checks this form against the model's right-hand side at every sample.
+"""
+rotor_structure(::AbstractComponent) = nothing
+function rotor_structure(c::GENROU_PHTRUE)
+    p = c.p
+    A = [-1/p.Td0_prime 0.0 0.0 0.0;
+         1/p.Td0_double_prime -1/p.Td0_double_prime 0.0 0.0;
+         0.0 0.0 -1/p.Tq0_prime 0.0;
+         0.0 0.0 -1/p.Tq0_double_prime -1/p.Tq0_double_prime]
+    Bf = [1/p.Td0_prime, 0.0, 0.0, 0.0]
+    Bs = [-(p.xd - p.xd_prime)/p.Td0_prime 0.0;
+          -(p.xd_prime - p.xl)/p.Td0_double_prime 0.0;
+          0.0 (p.xq - p.xq_prime)/p.Tq0_prime;
+          0.0 -(p.xq_prime - p.xl)/p.Tq0_double_prime]
+    x = zeros(6)
+    x[2] = 1.0
+    Q = ForwardDiff.jacobian(z -> (xz = Vector{eltype(z)}(x); xz[3:6] .= z;
+                                   grad_hamiltonian(c, xz)[3:6]), zeros(4))
+    return (states = 3:6, A = A, Bf = Bf, Bs = Bs, Q = (Q + Q') / 2, currents = ("id_dq", "iq_dq"))
+end
+
 """Norton current (network frame), independent of the bus voltage."""
 function injection(c::GENROU_PHTRUE, x, V, p::GenrouParams = c.p)
     I_Re, I_Im, _, _ = _genrou_norton(p, x)

@@ -3,12 +3,15 @@
 #
 #   julia --project=. scripts/port_power_audit.jl [scenario.json]
 #
-# About 1 to 2 minutes. At the equilibrium, at random KCL-consistent states near it, and
+# About 15 s after compilation. At the equilibrium, at random KCL-consistent states near it, and
 # along the scenario's fault trajectory (IDA, log grid of the scenario):
 #   - per component, the storage rate grad H' f against the sum of the contract's port
 #     powers (evaluated from the component's own signals); the residual is the power it
 #     dissipates (> 0) or creates (< 0); for machines also against the physical kinetic
 #     storage H omega^2 instead of the shifted H (omega - 1)^2;
+#   - for GENROU (a linear rotor, `rotor_structure`): the rotor balance dH_mag/dt = field supply
+#     + stator exchange [id, iq]' B_s' Q z - rotor loss, and a proof that the rotor loss matrix
+#     -sym(QA) is positive definite;
 #   - the network identities: injected power = V' G V (+ fault and frequency-load terms) + V . g,
 #     machine terminal power, ComplexLoad declared against drawn power.
 # Report: outputs/ph_audit/<case>/port_power.json (summary and every sample).
@@ -59,8 +62,12 @@ for (t, d) in sort(collect(audit["by_type"]); by = first)
                 d["residual_physical_kinetic_min"], d["residual_physical_kinetic_max"],
                 isempty(cr) ? ", dissipative at every sample" : ", creates energy: " * join(sort(cr), " "))
     end
-    for key in ("mechanical_residual", "magnetic_residual", "terminal_residual")
+    for key in ("mechanical_residual", "magnetic_residual", "terminal_residual",
+                "stator_exchange", "rotor_loss")
         haskey(d, key * "_min") && @printf("  %-15s      %-20s [%.4g, %.4g]\n", "", key,
                                            d[key * "_min"], d[key * "_max"])
     end
+    haskey(d, "rotor_loss_matrix_min_eig_lower_bound") &&
+        @printf("  %-15s      rotor loss matrix -sym(QA) positive definite: lambda_min >= %.3g (rigorous)\n",
+                "", d["rotor_loss_matrix_min_eig_lower_bound"])
 end

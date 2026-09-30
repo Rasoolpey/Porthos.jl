@@ -59,17 +59,18 @@ function hessian_total_hamiltonian(sys::DAESystem, x::AbstractVector)
 end
 
 """
-    solve_network(sys, x, V0; tol = 1e-13, maxiter = 50) -> V
+    solve_network(sys, x, V0; tol = 1e-13, maxiter = 50, faults_on = false) -> V
 
-The bus voltages with KCL `g(x, V) = 0` at the states `x` (no fault), by Newton from `V0`.
+The bus voltages with KCL `g(x, V) = 0` at the states `x` (with every fault shunt of the
+scenario when `faults_on`), by Newton from `V0`.
 As in PHPS's network solve, one more Newton step is taken once the residual is below
 `tol`, so the result is at round-off and does not depend on the stopping rule.
 """
 function solve_network(sys::DAESystem, x::AbstractVector, V0::AbstractVector;
-                       tol::Real = 1e-13, maxiter::Integer = 50)
+                       tol::Real = 1e-13, maxiter::Integer = 50, faults_on::Bool = false)
     nd = sys.n_diff
     V = collect(Float64, V0)
-    G(v) = dae_residual(sys, x, v)[2]
+    G(v) = dae_residual(sys, x, v; faults_on)[2]
     for _ in 1:maxiter
         g = G(V)
         r = maximum(abs, g)

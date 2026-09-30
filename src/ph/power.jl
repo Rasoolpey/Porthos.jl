@@ -61,6 +61,10 @@ expression), `supply` (the evaluable ports), `complete` (every power port evalua
 `H (omega - 1)^2` the model declares) and, against the physical kinetic storage, the split
 of the residual into `mechanical_residual = Tm - Pe - d(H omega^2)/dt`,
 `magnetic_residual = Efd i_fd - dH_mag/dt` and `terminal_residual = Pe - V . I_norton`.
+Machines with a `rotor_structure` (GENROU) also get the rotor port split `field_supply`,
+`stator_exchange = [id, iq]' B_s' Q z`, `rotor_loss = -z' sym(QA) z`, and the errors of the
+field colocation, of the linear rotor form against the right-hand side, and of the identity
+`dH_mag/dt = field_supply + stator_exchange - rotor_loss`.
 """
 function component_power(sys::DAESystem, x::AbstractVector, V::AbstractVector;
                          contracts::ContractSet = default_contracts(), faults_on::Bool = false)
@@ -106,6 +110,25 @@ function component_power(sys::DAESystem, x::AbstractVector, V::AbstractVector;
                 d["mechanical_residual"] = env["Tm"] - env["Pe"] - 2H * w * dw
                 d["magnetic_residual"] = env["Efd"] * env["i_fd"] - (rate - 2H * (w - 1) * dw)
                 d["terminal_residual"] = env["Pe"] - (env["Vd"] * env["Id"] + env["Vq"] * env["Iq"])
+            end
+            # the rotor as a linear port system (`rotor_structure`): dH_mag/dt =
+            # field supply + stator exchange - rotor loss, with the stator exchange
+            # [id, iq]' B_s' Q z and the loss -z' sym(QA) z
+            rs = rotor_structure(c)
+            if rs !== nothing
+                z = xk[rs.states]
+                i = [env[rs.currents[1]], env[rs.currents[2]]]
+                Qz = rs.Q * z
+                field = env["Efd"] * dot(rs.Bf, Qz)
+                exchange = dot(i, rs.Bs' * Qz)
+                loss = -dot(z, rs.Q * (rs.A * z))
+                dHmag = rate - 2H * (w - 1) * dw
+                d["field_supply"] = field
+                d["stator_exchange"] = exchange
+                d["rotor_loss"] = loss
+                d["field_colocation_error"] = abs(dot(rs.Bf, Qz) - env["i_fd"])
+                d["rotor_model_error"] = maximum(abs, f[r[rs.states]] .- (rs.A * z .+ rs.Bf .* env["Efd"] .+ rs.Bs * i))
+                d["rotor_identity_error"] = abs(dHmag - (field + exchange - loss))
             end
         end
         push!(out, d)
@@ -193,8 +216,10 @@ end
 
 The states the audit visits: the equilibrium, `n_random` random perturbations of it
 (`scale` relative to each state's magnitude, at least `scale`, reservoirs, held states and
-the monitor unchanged, voltages from `solve_network`), and, if given, the columns of a
-`SimResult` (`trajectory`) with their fault flag.
+the monitor unchanged, voltages from `solve_network`), and, if given, the states of a
+`SimResult` (`trajectory`) with their fault flag (`fault_window`; a record at an event time
+is the left limit) and their voltages re-solved on that KCL branch, so every sample
+satisfies KCL to round-off.
 """
 function power_audit_samples(sys::DAESystem, x::AbstractVector, V::AbstractVector;
                              n_random::Integer = 8, scale::Real = 1e-2, seed::Integer = 11,
@@ -220,7 +245,15 @@ function power_audit_samples(sys::DAESystem, x::AbstractVector, V::AbstractVecto
             # a record at an event time is the left limit (the state just before the switch)
             on = fault_window !== nothing && fault_window[1] < t <= fault_window[2]
             y = trajectory.Y[:, k]
-            push!(out, (label = "t = $(round(t; digits = 4))", x = y[1:nd], V = y[nd+1:end], faults_on = on))
+            xs = y[1:nd]
+            # the integrator's voltages satisfy KCL only to its tolerance: re-solve them on the
+            # healthy or the fault-on branch, from the recorded ones
+            Vs = try
+                solve_network(sys, xs, y[nd+1:end]; faults_on = on)
+            catch
+                continue
+            end
+            push!(out, (label = "t = $(round(t; digits = 4))", x = xs, V = Vs, faults_on = on))
         end
     end
     return out
@@ -240,7 +273,8 @@ function port_power_audit(sys::DAESystem, samples; contracts::ContractSet = defa
     comp = Dict{String,Dict{String,Any}}()
     ident = Dict("network_balance" => 0.0, "kcl_residual_power" => 0.0,
                  "machine_terminal" => 0.0, "machine_Pe_vs_terminal" => 0.0,
-                 "load_declared_vs_drawn" => 0.0)
+                 "load_declared_vs_drawn" => 0.0, "field_colocation" => 0.0,
+                 "rotor_model" => 0.0, "rotor_identity" => 0.0)
     for s in samples
         cp = component_power(sys, s.x, s.V; contracts, faults_on = s.faults_on)
         np = network_power(sys, s.x, s.V; faults_on = s.faults_on)
@@ -258,13 +292,18 @@ function port_power_audit(sys::DAESystem, samples; contracts::ContractSet = defa
                 (ident["load_declared_vs_drawn"] = max(ident["load_declared_vs_drawn"], abs(l["declared_P"] - l["drawn"])))
         end
         for d in cp
+            for (key, id) in (("field_colocation_error", "field_colocation"), ("rotor_model_error", "rotor_model"),
+                              ("rotor_identity_error", "rotor_identity"))
+                haskey(d, key) && (ident[id] = max(ident[id], d[key]))
+            end
             e = get!(comp, d["component"]) do
                 Dict{String,Any}("type" => d["type"], "complete" => d["complete"],
                                  "ports" => [p["name"] * " = " * p["expression"] for p in d["ports"]],
                                  "residual_min" => Inf, "residual_max" => -Inf,
                                  "rate_min" => Inf, "rate_max" => -Inf, "negative_residual_samples" => 0)
             end
-            for key in ("mechanical_residual", "magnetic_residual", "terminal_residual")
+            for key in ("mechanical_residual", "magnetic_residual", "terminal_residual",
+                        "stator_exchange", "rotor_loss")
                 haskey(d, key) || continue
                 e[key * "_min"] = min(get(e, key * "_min", Inf), d[key])
                 e[key * "_max"] = max(get(e, key * "_max", -Inf), d[key])
@@ -282,6 +321,15 @@ function port_power_audit(sys::DAESystem, samples; contracts::ContractSet = defa
             d["residual"] < -1e-9 && (e["negative_residual_samples"] += 1)
         end
     end
+    # the rotor loss matrix -sym(QA) of each linear rotor, proved positive definite
+    # (a rigorous lower bound on its smallest eigenvalue, for the Float64 matrices)
+    for c in sys.comps
+        rs = rotor_structure(c)
+        rs === nothing && continue
+        L = -(rs.Q * rs.A + rs.A' * rs.Q) / 2
+        comp[name(c)]["rotor_loss_matrix_min_eig_lower_bound"] =
+            verified_min_eig(IntervalArithmetic.interval.((L + L') / 2))
+    end
     bytype = Dict{String,Any}()
     for (n, e) in comp
         t = get!(bytype, e["type"]) do
@@ -293,12 +341,17 @@ function port_power_audit(sys::DAESystem, samples; contracts::ContractSet = defa
         t["residual_min"] = min(t["residual_min"], e["residual_min"])
         t["residual_max"] = max(t["residual_max"], e["residual_max"])
         e["negative_residual_samples"] > 0 && push!(t["components_creating_energy"], n)
+        if haskey(e, "rotor_loss_matrix_min_eig_lower_bound")
+            t["rotor_loss_matrix_min_eig_lower_bound"] = min(get(t, "rotor_loss_matrix_min_eig_lower_bound", Inf),
+                                                            e["rotor_loss_matrix_min_eig_lower_bound"])
+        end
         if haskey(e, "residual_physical_kinetic_min")
             t["residual_physical_kinetic_min"] = min(get(t, "residual_physical_kinetic_min", Inf), e["residual_physical_kinetic_min"])
             t["residual_physical_kinetic_max"] = max(get(t, "residual_physical_kinetic_max", -Inf), e["residual_physical_kinetic_max"])
             e["negative_physical_kinetic_samples"] > 0 &&
                 push!(get!(t, "components_creating_energy_physical_kinetic", String[]), n)
-            for key in ("mechanical_residual", "magnetic_residual", "terminal_residual")
+            for key in ("mechanical_residual", "magnetic_residual", "terminal_residual",
+                        "stator_exchange", "rotor_loss")
                 haskey(e, key * "_min") || continue
                 t[key * "_min"] = min(get(t, key * "_min", Inf), e[key * "_min"])
                 t[key * "_max"] = max(get(t, key * "_max", -Inf), e[key * "_max"])
