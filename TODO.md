@@ -211,6 +211,39 @@ discussed with the user before they are implemented.
      remove the curl; only an independently derived physical supply may cancel it. If the
      shortage is not dominated by proved losses, use structured exact scalar cross-terms
      (guided by Route B) or a dynamic extension, and state which construction was used.
+   **Calculations 1 to 3 (2026-09-30; `src/ph/joint_storage.jl`,
+   `scripts/joint_storage_check.jl`, about 4 minutes; fast tests in `test/unit/ph.jl`).**
+   On the KCL branch `H_alpha` is a function of the section coordinates through
+   `w = z - D I(eta)`, so its Bregman Hessian at the equilibrium is
+   `W'QW + sum_j (Qw*)_j Hess w_j`, with the field current `(Qw*)_fd` nonzero.
+   - Quotient Hessians (171 coordinates; inertia +/-/0): `H_w` (alpha = 0) 69/13/89, most
+     negative -0.083; `H_w - F` (alpha = 1) 68/14/89, -0.053; with the shifted kinetic
+     storage `sum H (omega - 1)^2`: 71/11/89 (-0.072) and 78/4/89 (-0.045). **Every form is
+     indefinite**: the stator-current curvature makes the composed storage non-convex, and
+     alpha = 1 reduces but does not remove the negative directions. The 89 zero directions
+     are what the machine storage does not see (controllers, network).
+   - Exchange against dissipation, at linear order around the equilibrium (quadratic forms
+     on the section: rotor loss `W'LW`, exchange `-sym(W'QD J_I A)`, incremental network
+     conductance loss `J_V'G J_V`): the exchange vanishes where rotor + network dissipation
+     vanish (1.8e-12), but on the rest **it exceeds that dissipation by up to 927 times**
+     (largest generalized eigenvalue; scale-invariant). Proved rotor and network losses do
+     not dominate the shortage locally. Controllers carry no storage yet, so their
+     dissipation is not in this comparison.
+   - So, by the decision above, the shortage needs structured exact scalar cross-terms
+     (guided by Route B) or a dynamic extension, and the negative curvature of `H_alpha`
+     needs terms that dominate it; both are method choices for the user and the reviewer.
+     Step 5's polar network balance can proceed independently (it cannot remove the curl).
+   - **Literature check and candidate contribution:** `docs/LITERATURE_FINDINGS.md` records 30
+     core papers and six cross-field references. The issue is a non-closed work/supply one-form
+     (a circulatory force in mechanics, non-integrable differential supply in control). The literature has
+     general remedies, but the review found no work combining the closed-form obstruction for
+     a detailed GENROU multimachine DAE with construction and interval ROA certification of a
+     repairing scalar `H_ext`; this is a candidate research contribution, subject to a broader
+     novelty search. The implementation order is: reproduce the recent two-axis strain-energy
+     result; search for a structured exact scalar `H_ext`; then test Krasovskii/Brayton-Moser
+     rate storage and, if needed, a certificate-only dynamic-supply/IQC extension. Nonzero curl
+     cannot be removed by a coordinate change, and cyclo-dissipativity alone is not an ROA
+     certificate.
 5. **Polar ports and the network balance** (Route A'): derive the conjugate polar supply from
    the network energy balance (do not assume (P, omega) and (Q, |V|) are the right pairs);
    test the lossless network first, then quantify the passivity shortage from the
@@ -475,6 +508,9 @@ src/ph/exchange.jl        GENROU stator exchange through the KCL branch: current
                           exchange_one_form, one_form_exactness, one_form_path_test,
                           exchange_curl, lossless_variant
 scripts/exchange_one_form.jl  the exactness gate on the case and its lossless variant
+src/ph/joint_storage.jl   rotor_energy (gauge family H_alpha), shifted_kinetic_energy,
+                          quotient_hessian (Bregman Hessians), exchange_dissipation_forms
+scripts/joint_storage_check.jl  Hessians and exchange-vs-dissipation (one command)
 parity/generate/sim.py    sim section: PHPS's compiled BDF1 / IDA runs (5 ms grid, binary)
 ext/                      PorthosMakieExt (CairoMakie); PorthosJuMPExt (JuMP), with the
                           structure-search SDP currently in progress

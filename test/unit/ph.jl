@@ -254,3 +254,22 @@ end
         @test only(r.pairs).vJu - only(r.pairs).uJv ≈ dot(vv, W * uu) rtol = 1e-8
     end
 end
+
+@testset "joint machine storage: gauge family and quotient Hessian" begin
+    sc = load_scenario(joinpath(ROOT, "cases", "IEEE39Bus_PF", "bus_fault_bus16_150ms.json"))
+    eq = solve_equilibrium(load_case(sc.system_path), sc)
+    sys, V0 = eq.sys, eq.V
+    # the gauge family differs by the exact scalar F = sum I'D'QD I / 2
+    F = 0.0
+    I = Porthos._stator_currents(sys, eq.x, V0)
+    for (u, (rs, _)) in enumerate(Porthos._linear_rotors(sys))
+        Di = -(rs.A \ rs.Bs) * I[2u-1:2u]
+        F += dot(Di, rs.Q * Di) / 2
+    end
+    @test rotor_energy(sys, eq.x, V0; alpha = 0.0) - rotor_energy(sys, eq.x, V0; alpha = 1.0) ≈ F rtol = 1e-12
+    @test rotor_energy(sys, eq.x, V0) >= 0
+    # quotient Hessian of the shifted kinetic storage: 2H on the 11 speeds, nothing else
+    m = section_model(eq; scale = :none)
+    r = quotient_hessian(m, x -> shifted_kinetic_energy(sys, x))
+    @test r.positive == 11 && r.negative == 0 && r.zero == Porthos.neta(m) - 11
+end
