@@ -182,3 +182,31 @@ end
     @test lyapunov_check(Q0, As).lyapunov
     @test verified_lyapunov(T * Q0 * T, Ass).lyapunov
 end
+
+@testset "port-power residual audit" begin
+    sc = load_scenario(joinpath(ROOT, "cases", "IEEE39Bus_PF", "bus_fault_bus16_150ms.json"))
+    eq = solve_equilibrium(load_case(sc.system_path), sc)
+    smp = power_audit_samples(eq.sys, eq.x, eq.V; n_random = 3)
+    a = port_power_audit(eq.sys, smp)
+    id = a["identities_max_error"]
+    @test id["network_balance"] < 1e-11 && id["kcl_residual_power"] < 1e-10
+    @test id["machine_terminal"] < 1e-11 && id["machine_Pe_vs_terminal"] < 1e-11
+    @test id["load_declared_vs_drawn"] < 1e-9           # PHPS's 12-digit load constants
+    bt = a["by_type"]
+    # the one-way reservoirs are lossless accounts: supply equals the storage rate exactly
+    for t in ("IEEEG1_PHTRUE", "IEEEG3_PHTRUE", "IEEET1_PHTRUE")
+        @test bt[t]["complete"] && abs(bt[t]["residual_min"]) < 1e-9 && abs(bt[t]["residual_max"]) < 1e-9
+    end
+    # machines: the swing equation and the terminal balance close exactly; the residual
+    # against the physical kinetic storage is all magnetic
+    for t in ("GENROU_PHTRUE", "GENSAL_PHTRUE")
+        @test max(abs(bt[t]["mechanical_residual_min"]), abs(bt[t]["mechanical_residual_max"])) < 1e-10
+        @test max(abs(bt[t]["terminal_residual_min"]), abs(bt[t]["terminal_residual_max"])) < 1e-10
+        @test bt[t]["residual_physical_kinetic_min"] ≈ bt[t]["magnetic_residual_min"] atol = 1e-10
+    end
+    # at the equilibrium the storage is at rest and every machine dissipates (field losses)
+    at_eq = a["per_sample"][1]["components"]
+    @test all(d -> abs(d["storage_rate"]) < 1e-9, at_eq)
+    @test all(d -> d["magnetic_residual"] > 0, filter(d -> haskey(d, "magnetic_residual"), at_eq))
+    @test !bt["COMPLEXLOAD"]["complete"]                 # its contract port is not an expression
+end

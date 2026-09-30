@@ -76,6 +76,7 @@ include("ph/ports.jl")
 include("ph/dissipativity.jl")
 include("ph/terminal.jl")
 include("ph/structure.jl")
+include("ph/power.jl")
 
 # ROA certificates
 include("roa/interval.jl")
@@ -135,7 +136,8 @@ export storage_components, total_hamiltonian, grad_total_hamiltonian, hessian_to
        sync_jacobian, terminal_models, terminal_margins, state_groups, storage_pattern,
        reference_section, lyapunov_check, structured_lyapunov, pow2_scaling, decay_margin,
        margin_residuals, verified_min_eig, pattern_certificate, verified_lyapunov,
-       rank_couplings, add_coupling!, couple_states!, section_pattern
+       rank_couplings, add_coupling!, couple_states!, section_pattern,
+       component_power, network_power, power_audit_samples, port_power_audit
 # ROA certificates
 export ProofFailure, is_interval_type, interval_solve, verified_max_eig, weyl_max_eig, verified_inverse_diagonal,
        ellipsoid_half_widths, SectionModel, section_model, lift, section_coordinates,

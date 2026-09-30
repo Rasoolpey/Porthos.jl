@@ -462,7 +462,7 @@ The full plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
 | P7 | simulation, events, results writer | bus-16 fault: BDF1 against BDF1, IDA against IDA (until a limiter slides), and the PowerFactory metrics | done and frozen: BDF1 `1.7e-11`; IDA `1.2e-7` before the first sliding mode (converter IDA report-only) |
 | P8 | reports | figures regenerate from records alone | |
 | P9 | studies | recorded anchors reproduced: CCT, energy walls, frequency indices, Q-V margin `6.055 → 12.383 pu`, `D_r` | |
-| P10 | port-Hamiltonian audits | rank `54/171`, 41 positive eigenvalues, max `+12.882693`; IEEEG1 crossing at `1.934718 rad/s`; KYP infeasible on all nine sets | done; the nonlinear port-power residual audit is open (next step) |
+| P10 | port-Hamiltonian audits | rank `54/171`, 41 positive eigenvalues, max `+12.882693`; IEEEG1 crossing at `1.934718 rad/s`; KYP infeasible on all nine sets | done, including the nonlinear port-power residual audit |
 | P11 | ROA certificate pipeline | `verified_valid_level = 2.69e-12` for both candidate `P`; centered decay at `5.16e-10`; all 83 contract clauses pass | done for `V_P` in Porthos's own scaling (the PHPS numbers are sanity references): `1.71e-10` (centered), `1.88e-12` (first order); 83 clauses; `ROACheck` passes; analytic 1-D and 2-D cases in the tests |
 | P12 | Python wrappers; old pipeline retired | a fresh clone reproduces the parity suite with one command | |
 

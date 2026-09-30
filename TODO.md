@@ -90,10 +90,30 @@ discussed with the user before they are implemented.
      `roa_check.json` regenerated from commit `cb2a777` (`porthos_src_modified = false`):
      level `1.714e-10`, decay bound `-3.44e-3`, 83 clauses, 21 excluded states with ranges and
      drift bounds, ROACheck passed. `outputs/` is not in git; rerun the script to reproduce.
-4. **Nonlinear port-power residual audit** (the missing P10 audit): for each component,
-   reconstruct independently its supply (port power), internal storage derivative,
-   dissipation and the network cancellation, and check `grad H' f = supply - dissipation`
-   at random states and along trajectories. This gives Route A' reliable signs and units.
+4. ~~**Nonlinear port-power residual audit**~~ (done 2026-09-30; `src/ph/power.jl`,
+   `scripts/port_power_audit.jl`, about 10 s, report `outputs/ph_audit/<case>/port_power.json`;
+   tests in `test/unit/ph.jl`). At the equilibrium, 16 random KCL-consistent states and 601
+   points of the bus-16 fault trajectory (IDA):
+   - identities: network balance (injected = `V'GV` + fault + frequency loads + `V . g`)
+     2.8e-13, machine terminal (`V . It = V . I_norton - Re(y_n)|V|^2`) 3e-14, `Pe` = terminal
+     power 7e-15, ComplexLoad declared P = drawn power 7e-11;
+   - one-way reservoirs (IEEET1, IEEEG1, IEEEG3): residual exactly 0 (lossless accounts);
+   - machines, against the contract ports `Tm`, `Efd*i_fd`, `-(Vd*Id+Vq*Iq)`: with the
+     declared shifted kinetic storage `H (omega-1)^2` every unit "creates" energy (residual
+     down to -19.9 in the fault), because `Tm` is conjugate to `H omega^2`, not to the shifted
+     form; with `H omega^2` the mechanical side (`Tm - Pe - d(H omega^2)/dt`, D = 0) and the
+     terminal side close to 1e-14, and **the whole residual is in the magnetic block**
+     (`Efd i_fd - dH_mag/dt`): GENSAL is dissipative everywhere ([0.0022, 0.021]); **GENROU is
+     not** ([-0.022, 0.054]; negative for GENROU_2, 4, 7, 8, 9, near the equilibrium at 1e-2
+     perturbations as well as in the transient). So GENROU's declared circuit storage, with
+     the field port as its only electrical supply, is not a storage function: its rotor
+     circuits exchange energy with the stator through a path no port accounts for (the
+     contract's own status is `M1 rotor_field_pass_terminal_network_open`). This needs a
+     method discussion before step 6: which storage or port closes GENROU's magnetic block
+     (e.g. an explicit stator-exchange port, or a different magnetic storage in the same
+     coordinates); GENSAL shows the structure that works.
+   - ComplexLoad's contract port is prose, not an expression, so its port is not evaluated
+     (its power identity is checked on the network side).
 5. **Polar ports and explicit `U_net`** (Route A'): derive the conjugate polar supply from
    the network energy balance (do not assume (P, omega) and (Q, |V|) are the right pairs);
    test the lossless network first, then quantify the passivity shortage from the
@@ -157,6 +177,10 @@ level) and `roa_check.json`.
   does; hashing a GNU-tar extraction on Windows gives a different (wrong) hash.
 - The ROA pipeline and the review closures are committed as one commit (2026-09-30) after a
   green full suite (3043 passes, 2 intentional GFL skips, no failures, 14.5 min).
+- Step 4 (the port-power audit: `src/ph/power.jl`, `scripts/port_power_audit.jl`, tests,
+  docs) is committed (not pushed) after a green full suite (3058 passes, 2 intentional GFL
+  skips, no failures). The first CI run with pack v6 (`f53bfa0`) was still running when
+  the session moved on; the user checks it.
 - Committed on 2026-10-01 after a green local suite (2926 passes, 2 intentional GFL skips,
   no failures): converter IDA comparison report-only in P7 (BDF1 is the check there); the
   droop P6 residual exception (2e-12 on its two measured-current rows, every other row
@@ -343,6 +367,10 @@ src/roa/containment.jl    containment_audit (categories + contract domain clause
 src/roa/certificate.jl    certify_level, certify_roa (candidate or scenario path), records
 src/roa/check.jl          ROACheck: roa_check, interval_cholesky, cholesky_positive_definite
 scripts/certify_roa.jl    V_P certificate + ROACheck on IEEE-39 (one command)
+src/ph/power.jl           port-power residual audit: component_power, network_power,
+                          power_audit_samples, port_power_audit
+scripts/port_power_audit.jl  the audit at the equilibrium, random states and the fault
+                          trajectory (one command)
 parity/generate/sim.py    sim section: PHPS's compiled BDF1 / IDA runs (5 ms grid, binary)
 ext/                      PorthosMakieExt (CairoMakie); PorthosJuMPExt (JuMP), with the
                           structure-search SDP currently in progress

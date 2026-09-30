@@ -396,9 +396,18 @@ Port in this order. Each has a gate that reproduces a recorded number or table.
   - `scripts/ph_audit.jl` runs the audits on any case at Porthos's own equilibrium. It also
     reports the zeros of each governor port: IEEEG1 has relative degree 2 (never positive
     real at that port); IEEEG3 has a zero at +1.333 (non-passive on 1.319 to 14.893 rad/s).
-  - Still open in P10: the port-residual audit (PHPS work package 1 item 3); the KYP / IQC
-    LMI solver in the JuMP extension, which comes with the storage search of Part II
-    (B2, B4).
+  - The port-power residual audit (PHPS work package 1 item 3) is done (2026-09-30,
+    `src/ph/power.jl`, `scripts/port_power_audit.jl`): per component, `grad H' f` against
+    the contract's port powers evaluated from the component's own signals; the network, KCL,
+    machine-terminal and load identities hold to 1e-13 (loads 7e-11, PHPS's 12-digit
+    constants). Findings: the reservoirs balance exactly (lossless accounts); the machines'
+    swing and terminal balances close exactly against the physical kinetic storage
+    `H omega^2` (with the declared shifted `H (omega - 1)^2` the `Tm` port is not conjugate);
+    the remaining residual is all in the magnetic block, where GENROU's declared storage is
+    not a dissipation inequality with `Efd i_fd` as its supply (negative for 5 of 10 units,
+    near the equilibrium as well as in the fault transient); GENSAL's is.
+  - Still open in P10: the KYP / IQC LMI solver in the JuMP extension, which comes with the
+    storage search of Part II (B2, B4).
 
 ### P11. ROA certificate pipeline
 Components:
