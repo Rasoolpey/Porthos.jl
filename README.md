@@ -476,9 +476,11 @@ The full plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
     gives a **certified CCT lower bound**.
   - Falsification evidence.
 - **II.2 Making `H` a certified Lyapunov function (Target B).**
-  - Keep the physical machine storage as the interpretable core of a scalar `H_ext`.
-  - Treat GENROU's non-closed stator-exchange one-form as an explicit decay shortage; it is
-    not a scalar `V_cross`, and no coordinate change can make it one.
+  - Use the Nishino-Chakrabortty-Ishizaki strain energy for GENROU and the exact lossless
+    network potential as the physical core of `H_ext`.
+  - Keep the non-closed exchange obtained from PHPS's declared magnetic `Q` as a diagnostic
+    of that storage choice, not as an obstruction intrinsic to GENROU.
+  - Quantify the remaining speed-voltage, conductance, load and dynamic-field-port terms.
   - A PH-informed storage LMI to find exact scalar cross-terms that restore positivity and
     decay.
   - Nonlinear storage terms, each with a stated physical origin.
@@ -488,39 +490,41 @@ The full plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
   - Storage for converter controllers.
   - Certification of the non-quadratic `H_ext`.
 
-### A non-exact exchange and the Target-B contribution
+### GENROU strain energy and the Target-B contribution
 
-The GENROU audit exposed a structural obstruction. In current-corrected rotor coordinates
-`w = z - D i`, the rotor loss is positive and the steady-state inconsistency disappears, but
-the complementary stator exchange is the work one-form `w' Q D dI` on the network's KCL
-branch. Its curl is nonzero on both the IEEE-39 network and a lossless variant. It is therefore
-not the differential of any scalar network energy, and the obstruction cannot be removed by
-changing reference angle or using polar coordinates.
+The first GENROU audit used PHPS's declared magnetic matrix `Q`. In current-corrected rotor
+coordinates its complementary stator exchange is a non-closed work one-form: its curl remains
+nonzero on both the IEEE-39 network and a lossless variant. That conclusion is valid for this
+`Q`, and no coordinate change can make that particular one-form exact.
 
-The literature calls this a **non-closed work/supply one-form**, a **circulatory force**, or a
-**non-integrable differential supply**. Established remedies quantify a passivity shortage,
-construct a different exact scalar Lyapunov function, use Krasovskii/Brayton-Moser rate
-storage, lift the certificate to differential/geodesic space, or introduce a dynamic
-supply-rate/IQC filter. Relevant foundations include shifted passivity
-([Monshizadeh et al., 2019](https://doi.org/10.1016/j.sysconle.2018.10.010)),
-equilibrium-independent dissipativity
-([Simpson-Porco, 2019](https://doi.org/10.1109/TAC.2018.2838664)), Krasovskii passivity
-([Kawano et al., 2021](https://doi.org/10.1109/TAC.2020.3040252)), and dynamic supply rates
-([Khong et al., 2025](https://doi.org/10.1016/j.automatica.2024.112000)). The closest
-generator-specific result proves an equilibrium-independent passivity characterization for
-two-axis machines through losslessness and strain-energy convexity
-([Nishino, Chakrabortty and Ishizaki, 2026](https://doi.org/10.1109/TAC.2025.3609489)); its
-extension to GENROU's additional rotor circuits is not established.
+A second calculation changes the storage rather than the coordinates. For every GENROU unit,
+the Float64 algebraic check finds a positive symmetric metric `M` satisfying
+`M B_s = -Psi''^T` and making `M A` symmetric, with large eigenvalue margins. The resulting
+candidate rotor strain energy `U_rot = -z' M A z / 2` is strictly convex in the rotor states
+and its armature-reaction term is exactly the gradient of the lossless internal-EMF network
+potential. Thus GENROU admits the strain-energy mechanism of
+[Ishizaki, Nishino and Chakrabortty](https://arxiv.org/abs/2304.00987); the old non-exact
+exchange diagnosed a 0.7% to 20% shape mismatch in PHPS's storage, not structural
+non-integrability of the machine model.
 
-Porthos therefore uses `H` to mean the final scalar Lyapunov function, without claiming that
-every term is literal physical energy. The planned contribution is to retain physical storage
-as the core, prove the non-exact obstruction, add only well-defined scalar cross-terms or
-certificate dynamics, and certify positivity and decay for the resulting `H_ext` with interval
-arithmetic on the DAE quotient. The complete findings, 30 core references, six cross-field
-references and experiment order are in
-[docs/LITERATURE_FINDINGS.md](docs/LITERATURE_FINDINGS.md). This is presently a candidate
-research contribution; a broader novelty search and the completed `H_ext` proof are required
-before making a priority claim.
+The remaining differences are now precise: Porthos has the speed-scaled internal voltage
+`E'' = omega psi''`, conductances, voltage-dependent ComplexLoads and a dynamic AVR. The
+paper assumes a lossless network and constant field voltage. For the strain energy, the field
+input pairs with the rate `B_f' M zdot`. Porthos keeps the runtime `i_fd` signal unchanged and
+uses this rate only in the storage audit. With an AVR, the incremental field supply
+`(Efd-Efd*) B_f' M zdot` suggests an exact machine-exciter cross-term; its positivity and decay
+will be tested before adoption.
+
+The planned contribution is therefore to extend the published two-axis strain-energy argument
+to the four-state GENROU rotor circuits, isolate the residual terms introduced by the detailed
+model, construct a joint `H_ext`, and certify its nonlinear ROA with interval arithmetic on the
+DAE quotient. Relevant fallback tools remain shifted passivity
+([Monshizadeh et al., 2019](https://doi.org/10.1016/j.sysconle.2018.10.010)), Krasovskii
+passivity ([Kawano et al., 2021](https://doi.org/10.1109/TAC.2020.3040252)) and dynamic supply
+rates ([Khong et al., 2025](https://doi.org/10.1016/j.automatica.2024.112000)). The complete
+findings and literature map are in
+[docs/LITERATURE_FINDINGS.md](docs/LITERATURE_FINDINGS.md). This remains a candidate research
+contribution until the full identity, novelty search and certified `H_ext` are complete.
 - **II.3 Physical converter models.** The dc link, LCL filter and inner current loop as real
   port-Hamiltonian storage, replacing the reservoir account.
 

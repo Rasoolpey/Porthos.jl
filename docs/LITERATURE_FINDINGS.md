@@ -1,8 +1,8 @@
-# Literature findings: non-exact GENROU exchange and Lyapunov construction
+# Literature findings: GENROU strain energy, storage choice and Lyapunov construction
 
 Date: 2026-09-30
 
-## The mathematical issue
+## The initial non-exact result and its resolution
 
 For the current-corrected GENROU rotor coordinate
 
@@ -27,7 +27,23 @@ omega_ex = -d(1/2 I' D' Q D I) + (D'Qz)' dI
 ```
 
 isolates an exact gauge term and a non-exact remainder. The latter must appear in the decay
-identity unless another physical subsystem supplies the opposite one-form.
+identity **if PHPS's declared `Q` is retained**.
+
+That qualifier is decisive. Nonzero exterior derivative is invariant under coordinate changes,
+so polar variables cannot repair this particular one-form. It is not invariant under changing
+the storage itself. Applying the strain-energy construction of Ishizaki, Nishino and
+Chakrabortty produces a different positive metric `M`. On all ten IEEE-39 GENROU units,
+
+```text
+M B_s = -Psi''^T,       M A = A' M,
+U_rot(z) = -1/2 z' M A z.
+```
+
+The computed `M` and `-sym(MA)` are positive definite with comfortable Float64 margins, and
+the armature-reaction term is exactly the gradient of the lossless internal-EMF network
+potential. Thus the machine model admits a scalar strain energy. The non-closed form diagnosed
+a mismatch between PHPS's magnetic storage and the network-compatible strain energy; it was
+not an intrinsic obstruction of GENROU.
 
 The most useful names for this issue are:
 
@@ -44,31 +60,27 @@ ROA certificate.
 
 ## Candidate research contribution
 
-The potentially important contribution is the combination of a model-specific obstruction
-and a constructive, rigorous response. The literature contains the general mathematical
-ingredients below, but this review did not find a work that establishes all of the following
-for a detailed GENROU multimachine DAE:
+The potentially important contribution is now the extension and certification of a known
+strain-energy mechanism, together with a precise diagnosis of an inherited storage choice.
+This review did not find a work that establishes all of the following for a detailed GENROU
+multimachine DAE:
 
-1. derive the current-corrected rotor coordinate `w = z - D i` without changing the plant;
-2. identify the complementary stator exchange as a one-form on the KCL quotient;
-3. prove its non-exactness analytically through its closed-form curl and numerically on both
-   lossy and lossless networks;
-4. show that the obstruction persists independently of reference angle and network losses;
-5. quantify why the obvious physical candidate fails: its Bregman Hessian is indefinite and
-   its exchange shortage exceeds the presently proved rotor and network losses;
-6. construct a scalar Lyapunov function `H_ext` that handles the remainder honestly; and
-7. certify a nonlinear ROA for that `H_ext` with interval arithmetic, including the algebraic
-   KCL branch and limiter modes.
+1. show that the declared PHPS magnetic storage produces a non-closed exchange and identify
+   its closed-form curl;
+2. derive a positive gradient metric `M` for all four GENROU rotor-circuit states, including
+   the damper circuits, with the sign fixed by the internal-EMF network potential;
+3. prove the lossless armature-reaction interconnection closes with the resulting convex
+   `U_rot`, rather than with the declared `Q`;
+4. isolate the residuals caused by speed-scaled voltage, conductances, voltage-dependent loads
+   and a dynamic field voltage;
+5. construct a joint scalar Lyapunov function `H_ext` for those residuals; and
+6. certify a nonlinear ROA for `H_ext` with interval arithmetic, including the algebraic KCL
+   branch and limiter modes.
 
-Items 1 to 5 are findings already obtained in Porthos. Items 6 and 7 are the open constructive
-part. Until a broader systematic novelty search and a complete proof are finished, this should
-be described as a **candidate contribution**, not as the first solution in the literature.
-
-The intended claim is not that physical energy is useless. It is that, for this detailed model,
-the physical rotor energy generates a non-closed exchange on the reduced state space. The
-correct final object is therefore a scalar Lyapunov function `H_ext`: physical storage provides
-its interpretable core, and exact cross-terms, rate storage, or certificate-only dynamics repair
-its positivity and decay. Every added term remains subject to the same rigorous ROA checks.
+Items 1 and 2 are established numerically with algebraic residual checks; the network identity
+in item 3 is the next full-flow check. Items 4 to 6 remain open. Until the identities receive
+validated bounds, a broader novelty search is completed, and the nonlinear certificate passes,
+this should be described as a **candidate contribution**, not a priority claim.
 
 ## What has worked in the literature
 
@@ -76,8 +88,8 @@ its positivity and decay. Every added term remains subject to the same rigorous 
 
 Shifted passivity, equilibrium-independent dissipativity, and passive-short methods retain a
 scalar storage but add a quadratic shortage term to its supply rate. Stability follows when
-the interconnection or other components contribute enough excess dissipation. This is the
-closest static framework to Porthos's present identity.
+the interconnection or other components contribute enough excess dissipation. This remains a
+fallback framework for terms that survive the strain-energy identity.
 
 For Porthos, define the scalar rate along the reduced field,
 
@@ -85,10 +97,10 @@ For Porthos, define the scalar rate along the reduced field,
 sigma_ex(eta) = omega_ex(eta)[f_eta(eta)],
 ```
 
-and seek a structured quadratic bound rather than one global scalar index. The current local
-calculation says rotor plus network conductance loss can be exceeded by a factor of 927, so a
-plain loss-dominance claim is already ruled out. Controller terms and structured cross-terms
-can still change the combined inequality.
+and seek a structured quadratic bound rather than one global scalar index. For PHPS's declared
+`Q`, rotor plus network conductance loss was exceeded by a factor of 927, ruling out plain
+loss dominance for that candidate. The gradient metric `M` supersedes this comparison for the
+physical strain-energy route; shortage bounds should be recomputed only for its residual terms.
 
 ### 2. Use an exact scalar Lyapunov function that need not be physical energy
 
@@ -115,9 +127,9 @@ metric and the geodesic/path construction.
 
 Brayton-Moser power shaping and Krasovskii passivity replace the ordinary energy/passive map
 with a mixed potential, a differentiated port, or a storage based on the vector field such as
-`f(x)' M(x) f(x) / 2`. This can yield a scalar Lyapunov function even when the original work
-one-form is not integrable. The appearance of `dI/dt` in GENROU's corrected balance makes this
-family particularly relevant.
+`f(x)' M(x) f(x) / 2`. This can yield a scalar Lyapunov function even when a chosen work
+one-form is not integrable. It is now a fallback if the strain-energy and joint-controller
+construction leaves an undominated residual.
 
 ### 5. Add certificate dynamics
 
@@ -135,39 +147,35 @@ identify the maximal exact part, but they do not make the coexact remainder a st
 
 ## Direct implications for Porthos
 
-1. Keep `H_w` as the interpretable rotor energy and keep the non-exact exchange in `dot(H)`.
-   Do not name the one-form `V_cross` or integrate it along an arbitrary path.
-2. Use `H` for the final scalar Lyapunov function. It may contain physical storage, Bregman
-   shifts, and exact certificate cross-terms; every term must have a well-defined scalar value
-   and pass the quotient Hessian and interval decay checks.
-3. Reproduce the Nishino-Ishizaki two-axis strain-energy construction on a reduced Porthos
-   model. Their result says losslessness and convexity characterize equilibrium-independent
-   passivity for that model class. The Porthos curl survives removal of losses, so either their
-   global electromagnetic subsystem uses a different state/port split or the extra GENROU
-   rotor circuits break the two-axis structure. This comparison can distinguish the two.
-4. Treat the passive-short calculation as a diagnostic. The factor 927 rules out the present
-   rotor-plus-network losses as a sufficient bound; repeat it only after controller storage or
-   structured exact cross-terms have been added.
-5. Search next for a static `H_ext` with structured quadratic cross-terms, seeded by the full
-   Lyapunov matrix and constrained by rotation symmetry. Certify positivity and decay with the
-   existing interval pipeline.
-6. In parallel, test a Krasovskii/Brayton-Moser candidate using `dI/dt`. If the static search
-   cannot produce a useful certified set, try a low-order dynamic-supply/IQC extension.
-7. Continue the polar network audit because it can reveal useful conjugate variables and
-   exact terms. It cannot remove the measured curl.
+1. Use `U_rot = -z'MAz/2`, not PHPS's declared magnetic `Q`, as the GENROU rotor strain-energy
+   candidate. Prove the metric and convexity with validated arithmetic before certification.
+2. Combine it with the exact lossless network potential and verify the complete flow identity.
+   The old curl remains a valid negative result only for the discarded `Q`.
+3. Keep runtime `i_fd` and the component dynamics unchanged. For the strain energy define the
+   audit/certificate flow `y_fd^U = B_f'M zdot`. In the Bregman identity its supply is
+   `(Efd-Efd*) y_fd^U` and vanishes when `Efd` is constant.
+4. For a dynamic AVR, set `r = B_f'M(z-z*)` and test the exact scalar cross-term
+   `-(Efd-Efd*)r`. It converts the field supply to `-Efd_dot r`; a joint machine-exciter
+   storage must then prove positivity and decay.
+5. Quantify the speed-voltage, conductance and ComplexLoad residuals separately. Do not fold
+   them back into the obsolete 927-times shortage of the declared `Q`.
+6. Use structured scalar terms guided by Route B only for residuals that remain after this
+   physical strain-energy construction. Use Krasovskii or dynamic-supply extensions as
+   fallbacks.
 
 ## Recommended experiment order
 
-1. **Two-axis reproduction gate:** implement the strain energy from the 2021/2026
-   Ishizaki-Nishino line on the lossless reduced model; compare its Hessian and supply identity
-   with the GENROU audit.
-2. **Structured static gate:** solve for exact quadratic cross-terms in `H_ext`, using the
-   Route-B matrix as a seed and imposing quotient invariance and a useful decay margin.
-3. **Nonlinear certification gate:** Bregman-shift the successful candidate and run the same
+1. **Full strain-energy identity:** verify `U_rot + U_B` along the lossless GENROU flow and
+   measure the speed-voltage residual.
+2. **Field and load closure:** derive the joint machine-exciter cross-term and the
+   voltage-dependent load potential; quantify the conductance shortage separately.
+3. **Structured static gate:** use Route B to add exact scalar terms only where the completed
+   physical identity still lacks curvature or decay.
+4. **Nonlinear certification gate:** Bregman-shift the successful candidate and run the same
    interval positivity, branch-containment, KCL-uniqueness, and decay proof used for `V_P`.
-4. **Rate-storage gate:** test `S_K = f_eta' M f_eta / 2` and a Brayton-Moser mixed-potential
+5. **Rate-storage gate:** test `S_K = f_eta' M f_eta / 2` and a Brayton-Moser mixed-potential
    variant in which `dI/dt` is a port variable.
-5. **Dynamic extension gate:** add the smallest stable filter that gives a feasible dynamic
+6. **Dynamic extension gate:** add the smallest stable filter that gives a feasible dynamic
    supply/IQC certificate; keep those states certificate-only.
 
 ## Thirty core records
@@ -206,7 +214,7 @@ Links point to DOI records or open preprints.
 | 27 | Vu and Turitsyn, “Lyapunov Functions Family Approach to Transient Stability Assessment” (2016), [DOI](https://doi.org/10.1109/TPWRS.2015.2425885) | Replaces a unique physical energy with an SDP-generated family of scalar Lyapunov functions. |
 | 28 | Stegink, De Persis, and van der Schaft, “A Unifying Energy-Based Approach to Stability of Power Grids With Market Dynamics” (2017), [DOI](https://doi.org/10.1109/TAC.2016.2613901) | Port-Hamiltonian interconnection and shifted/Bregman energy for a coupled grid model. |
 | 29 | Ishizaki and Chakrabortty, “Necessity of Lossless Transmission and Convexity of Potential Energy Function for Equilibrium Independent Passivity of Power Systems” (2021), [DOI](https://doi.org/10.1109/CDC45484.2021.9683357) | Establishes losslessness and convex potential energy as decisive conditions in a power-system model. |
-| 30 | Nishino, Chakrabortty, and Ishizaki, “A Necessary and Sufficient Condition for Equilibrium-Independent Passivity of Power Systems With Two-Axis Generators” (2026), [DOI](https://doi.org/10.1109/TAC.2025.3609489) | Most direct current result: lossless transmission is necessary and strain-energy convexity characterizes the EI-passive equilibrium set for two-axis generators. |
+| 30 | Nishino, Chakrabortty, and Ishizaki, “A Necessary and Sufficient Condition for Equilibrium-Independent Passivity of Power Systems With Two-Axis Generators” (2026), [DOI](https://doi.org/10.1109/TAC.2025.3609489), [open preprint](https://arxiv.org/abs/2304.00987) | Most direct result: lossless transmission is necessary and strain-energy convexity characterizes the EI-passive equilibrium set; its preprint supplied the equations reproduced for GENROU. |
 
 ## Cross-field records that clarify the geometry
 

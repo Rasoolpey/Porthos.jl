@@ -1,9 +1,63 @@
 # Porthos.jl progress and hand-off
 
-Read this first in a new session, then `AGENTS.md` and `docs/ROADMAP.md` (its Part I banner:
-parity is frozen). Updated at the end of every session.
+Read this first in a new session, then `docs/ROADMAP.md` (its Part I banner: parity is
+frozen) and `README.md`. Updated at the end of every session.
 
-Last reviewed: 2026-09-30 (step 3, the ROA certificate pipeline for `V_P`, done).
+Last reviewed: 2026-09-30 (end of session: steps 3 and 4 done, step 5 in progress; the
+GENROU strain-energy structure found).
+
+## Start here (hand-off for the next conversation)
+
+**Where things stand.** The simulator port is done and parity is frozen (pack v6 published).
+The ROA pipeline (`src/roa/`) certifies the quadratic scaffold `V_P` on IEEE-39 (level
+`1.714e-10`, `ROACheck` passes). The port-power audit (step 4) showed that GENROU's rotor,
+with PHPS's declared magnetic storage `Q`, exchanges energy with the stator through a
+non-exact one-form (5a). The decisive new result (commit `cdc429b`,
+`rotor_gradient_metric`): **GENROU admits the Nishino-Chakrabortty-Ishizaki strain-energy
+gradient structure** with a different metric `M` (all 10 units: `M > 0`, `U_rot = -z'MAz/2`
+convex, `M B_s = -Psi''^T` at 1e-16). So the obstruction belongs to PHPS's `Q`, not to
+GENROU; on a lossless network the armature reaction becomes an exact gradient of
+`U_rot + U_net`. What remains outside that structure: the speed voltage (`E'' = omega psi''`,
+`Te = Pe/omega`), the network conductances, the ComplexLoad corrections, and the field/AVR
+port (`y_fd^U = B_f'M z'`, audit/certificate only; runtime `i_fd` unchanged). Details: 5a and
+5 below, `docs/LITERATURE_FINDINGS.md`.
+
+**Next step (5b): verify the joint strain-energy identity and measure its residuals.**
+1. Build `U_ext = U_rot(z) + U_net`, with `U_net = U_B(V) + sum_k [|E_k|^2/(2x'') - E_k . V_k / x'']`
+   (internal EMF `E_k = (-psi_q'', psi_d'')` rotated by `delta_k - pi/2`, with `omega = 1` as in
+   the paper; `U_B` is `network_potential`, which already contains the Norton `-1/x''` on the
+   bus diagonal). Include GENSAL's internal node as well, so that `dU_net/dV = 0` is KCL, and
+   the ComplexLoads' reactive corrections through their own potential `int q(v)/v dv`.
+2. On `lossless_variant(sys)` along the flow (KCL-consistent samples from
+   `power_audit_samples`, `V'` from `kcl_solve`), check
+   `d/dt U_ext = -z'^T M z' + Efd B_f^T M z' + sum_k P_int,k delta_k'`; report the residual and
+   attribute it: it should be the speed-voltage `(omega - 1)` terms only. Then on the lossy
+   network: the conductance part (closed form in `polar_balance`).
+3. Joint candidate: a torque-consistent kinetic storage (with `Te = Pe/omega` the swing gives
+   `2H omega omega' = Tm - Pe`, so `sum H omega^2` in the raw layer, its Bregman form for
+   decay) plus `U_ext`; Bregman Hessian on the 171-coordinate quotient (`quotient_hessian`)
+   and a local decay margin (the pattern of `exchange_dissipation_forms`).
+4. Field/AVR: test the machine-exciter cross-term `-(Efd - Efd*) r`, `r = B_f^T M (z - z*)`,
+   through the joint Hessian and decay (the field-port decision in 5).
+Reuse: `rotor_structure` (now with `Psi`), `rotor_gradient_metric`, `kcl_solve`,
+`lossless_variant`, `network_potential`, `polar_balance`, `quotient_hessian`,
+`power_audit_samples`. Then: Route-B-guided exact scalar repair of any residual curvature or
+decay, and the interval certificate of the joint `H_ext` (steps 6 and 7). A recorded side option
+for after 5b: dynamic π lines (and stator transients) as port-Hamiltonian subsystems, which
+make line resistance explicit dissipation instead of a non-exact transfer conductance (end of
+step 5). Probe small and
+bound long runs (the quotient Hessians take about 50 s each).
+
+**Working rules to keep:** commits only when the user asks, with the owner's Git identity and
+no AI attribution trailer (`Co-Authored-By`, `Signed-off-by` or similar); do not change
+component dynamics, runtime outputs or the IEEET1 reservoir wiring; label certificate-only
+terms as such; method choices on controllers go to the user first. CI results are not a
+priority for the user. Standing project rules: Julia does all computing (Python only edits
+JSON, runs `parity/generate/` and drives PowerFactory in `pf/`); the PHPS reference at
+`C:\Users\em18736\Documents\PHPS_Opt` is read-only; PowerFactory runs only through `pf/`
+with its window closed; component code stays generic in the number type, uses the branch
+primitives and an allocation-free `rhs!`; certificates are proofs, never samples; the
+repository is public (no credentials, unpublished reviewer correspondence or data dumps).
 
 ## Goal
 
@@ -199,8 +253,11 @@ repository owner's configured identity: never add AI `Co-Authored-By` or similar
      `(dI/d eta)' D'Q (dz/d eta) - transpose` (matches the measured Jacobian to 1.4e-16):
      writing `a . d eta = -d(I'D'QD I / 2) + (D'Qz)' dI`, the second part is not exact
      because the rotor states and the stator currents vary independently on the KCL branch.
-     This is intrinsic to the machine coupling, not to the network losses.
-   - **Decision:** retain the non-exact one-form as an explicit, sign-indefinite exchange
+     This is intrinsic to that one-form for the declared `Q`, not to network losses; the
+     strain-energy metric found below changes the storage and removes this armature-reaction
+     obstruction.
+   - **Decision at this stage, superseded for the physical candidate below:** if the declared
+     `Q` were retained, its non-exact one-form would remain an explicit, sign-indefinite
      shortage in `V_ext`'s decay identity. Do not call the one-form `V_cross`: it is not a
      scalar storage. Splitting off the exact scalar `F = I'D'QD I / 2` gives the gauge family
      `H_alpha = H_w - alpha F`; changing `alpha` redistributes an exact differential but
@@ -228,31 +285,23 @@ repository owner's configured identity: never add AI `Co-Authored-By` or similar
      conductance loss `J_V'G J_V`): the exchange vanishes where rotor + network dissipation
      vanish (1.8e-12), but on the rest **it exceeds that dissipation by up to 927 times**
      (largest generalized eigenvalue; scale-invariant). Proved rotor and network losses do
-     not dominate the shortage locally. Controllers carry no storage yet, so their
-     dissipation is not in this comparison.
-   - So, by the decision above, the shortage needs structured exact scalar cross-terms
-     (guided by Route B) or a dynamic extension, and the negative curvature of `H_alpha`
-     needs terms that dominate it; both are method choices for the user and the reviewer.
-     Step 5's polar network balance can proceed independently (it cannot remove the curl).
-   - **Literature check and candidate contribution:** `docs/LITERATURE_FINDINGS.md` records 30
-     core papers and six cross-field references. The issue is a non-closed work/supply one-form
-     (a circulatory force in mechanics, non-integrable differential supply in control). The literature has
-     general remedies, but the review found no work combining the closed-form obstruction for
-     a detailed GENROU multimachine DAE with construction and interval ROA certification of a
-     repairing scalar `H_ext`; this is a candidate research contribution, subject to a broader
-     novelty search. The implementation order is: reproduce the recent two-axis strain-energy
-     result; search for a structured exact scalar `H_ext`; then test Krasovskii/Brayton-Moser
-     rate storage and, if needed, a certificate-only dynamic-supply/IQC extension. Nonzero curl
-     cannot be removed by a coordinate change, and cyclo-dissipativity alone is not an ROA
-     certificate.
-   - **Method decision (2026-09-30): structured scalar `H_ext` first; dynamic extension as
-     fallback.** Complete the polar balance and reproduce the recent two-axis strain-energy
-     identity before freezing the candidate. Then use Route B's verified matrix to select a
-     sparse, rotation-invariant set of exact scalar machine-controller and cross-machine terms;
-     label nonphysical terms explicitly as certificate terms. Require a positive Bregman
-     Hessian and a useful local decay margin before attempting the nonlinear interval proof.
-     If no such static candidate survives those gates, test Krasovskii/Brayton-Moser rate
-     storage, followed only then by a certificate-only dynamic-supply/IQC extension.
+     not dominate the shortage locally **for the declared `Q`**. This comparison is obsolete
+     for the physical strain-energy candidate and must not be carried over to `M`. Controllers
+     carry no storage yet, so their dissipation was not in the comparison.
+   - **Literature check and revised candidate contribution:**
+     `docs/LITERATURE_FINDINGS.md` records 30 core papers and six cross-field references. The
+     non-closed one-form is a valid diagnosis of PHPS's `Q`, but the reproduced
+     Nishino-Chakrabortty-Ishizaki construction shows that GENROU admits a different convex
+     strain energy. The candidate contribution is now the four-state GENROU extension, the
+     precise residuals of the detailed model, and an interval-certified joint `H_ext`, subject
+     to a broader novelty search.
+   - **Revised method decision (2026-09-30): physical strain energy first; structured scalar
+     repair second; dynamic extension last.** Verify `U_rot + U_B`, then close or bound the
+     speed-voltage, field-controller, load and conductance terms. Use Route B only to select
+     sparse, rotation-invariant exact scalar terms for residual curvature or decay. Require a
+     positive Bregman Hessian and useful local decay margin before the nonlinear interval
+     proof. If no static candidate survives, test Krasovskii/Brayton-Moser rate storage and
+     only then a certificate-only dynamic-supply/IQC extension.
 5. **Polar ports and the network balance** (Route A'). **Step 1 done (2026-09-30;
    `src/ph/polar.jl`, `scripts/polar_balance.jl`, about 1 minute; tests in `test/unit/ph.jl`)**,
    at the equilibrium, 8 random KCL-consistent states and the healthy part of the bus-16
@@ -270,16 +319,11 @@ repository owner's configured identity: never add AI `Co-Authored-By` or similar
      `omega' i . psi''/omega_b` (1.4e-17). **It does not match the rotor exchange
      `w'QD di/dt`**: the exchange is 5 to 50 times larger (rms 0.05 to 0.10 against 0.002
      to 0.011) and only weakly correlated (0.16 to 0.59), so the mismatch is essentially the
-     whole exchange. The network's energy flow into the machine is the physical
-     electromagnetic power; GENROU's rotor model (armature reaction `B_s` with its time
-     constants, `psi''` blending) draws a different one. So neither a scalar potential nor
-     the swing-coupled flow identity of classical energy functions cancels the exchange; it
-     stays the explicit shortage, as decided in 5a.
-   Next per the method decision: reproduce the two-axis strain-energy identity
-   (Nishino-Chakrabortty-Ishizaki) on a reduced model, then the Route-B-guided structured
-   scalar `H_ext`.
+     whole exchange. This rules out cancellation of the exchange generated by PHPS's declared
+     magnetic `Q`; the two-axis result below shows that changing to the network-compatible
+     rotor strain energy makes armature reaction an exact gradient instead.
    **Two-axis reproduction, first result (2026-09-30; `rotor_gradient_metric` in
-   `src/ph/joint_storage.jl`, test in `test/unit/ph.jl`; not committed).** Source: the arXiv
+   `src/ph/joint_storage.jl`, test in `test/unit/ph.jl`; commit `cdc429b`).** Source: the arXiv
    version, Ishizaki, Nishino, Chakrabortty, arXiv:2304.00987v2 (the TAC 2026 paper's
    preprint). Their mechanism: on a lossless network the two-axis flux dynamics are a
    *gradient flow* of the strain energy, `tau E' = -(X - X') dU/dE + V_fd`, with
@@ -298,9 +342,44 @@ repository owner's configured identity: never add AI `Co-Authored-By` or similar
    Theorem 1); (3) the ComplexLoads' voltage-dependent corrections, which need their own
    potential; (4) the field port becomes `(Efd, B_f^T M z')` (a rate, like `V_fd E_q'` in
    theirs), not `(Efd, i_fd)`: with constant `Efd` it drops out of the Bregman form, with an
-   AVR it is a method choice. Next: the full identity
+   AVR it is a method choice.
+   **Field-port decision:** keep runtime `i_fd`, the IEEET1 interface and the plant dynamics
+   unchanged. Define `y_fd^U = B_f^T M z'` only for the strain-energy audit and certificate.
+   In the Bregman identity the incremental supply is `(Efd - Efd*) y_fd^U`. With
+   `r = B_f^T M (z-z*)`, first test the exact scalar machine-exciter cross-term
+   `-(Efd-Efd*)r`, which replaces that supply by `-Efd' r`; accept it only if the joint
+   Hessian is positive and the exciter dynamics give decay. Do not modify runtime `i_fd` to
+   force this identity.
+   Next: verify the full identity
    `d/dt (U_rot + U_net) = -z'^T M z' + Efd B_f^T M z' + P_int delta'` on the lossless
-   variant, quantifying the speed-voltage residual.
+   variant, quantifying the speed-voltage residual. The present `M > 0` and convexity checks
+   are Float64 candidate checks with large margins, not yet interval certificates.
+   **Option (user, 2026-09-30): dynamic π lines as port-Hamiltonian subsystems.** The
+   interconnection can be lossless even when the lines contain resistance: restoring each
+   π line's inductor and capacitor states makes the line a PH subsystem (storage
+   `L|i|^2/2 + C|v|^2/2`, the dq-frame `omega L`, `omega C` terms skew), terminal powers cancel
+   through the power-preserving Kirchhoff interconnection (a Dirac structure), and `R` and
+   `G` appear as explicit nonnegative, incrementally passive dissipation. This explains the
+   paper's losslessness condition: it concerns the quasi-static phasor network, where
+   eliminating the R-L dynamics in the rotating frame turns resistance into transfer
+   conductance, whose one-form is non-exact (the `2 (G kron J)` curl of `polar_balance`).
+   Caution: the standard static π admittance in Porthos's algebraic phasor Y-bus and a
+   dynamic π-line model are not the same system. To do before using it: check the precise
+   PH / descriptor formulations (e.g. Fiaz, Zonetti, Ortega, Scherpen, van der Schaft 2013
+   on PH power-network modelling, to be verified; Caliskan and Tabuada 2014, record 26 in
+   `docs/LITERATURE_FINDINGS.md`, with lossy dynamic lines) and map them to the Y-bus
+   (the static π is the quasi-static limit of the dynamic one). Consequences: a consistent
+   dynamic network needs the machines' stator flux transients too (the `dpsi/dt` stator
+   terms GENROU's quasi-static stator drops, the transformer term behind 5a); the result is
+   an EMT-like, stiff model with millisecond time constants, not the frozen RMS plant, so a
+   certificate for it transfers to the RMS model only through a separate
+   singular-perturbation argument (the user's physical-model-change fallback, not the
+   storage-only route); constant-power ComplexLoads stay non-passive either way. Plan: keep
+   the RMS route (5b) as the main line; as a side experiment after 5b, test the idea on a
+   single machine behind a dynamic π line to an infinite bus and on a two-machine case
+   (full-order machine with stator transients), checking incremental passivity (Bregman
+   Hessian and decay) with and without line resistance, as a reference for how much of the
+   RMS conductance residual is an artefact of the quasi-static reduction.
 6. **Construct `V_ext`**: machine energies + any independently derived exact `U_net` +
    controller terms + scalar cross terms, each
    with a stated origin. Use Route B only to diagnose missing blocks, after checking that its
@@ -360,11 +439,13 @@ level) and `roa_check.json`.
   does; hashing a GNU-tar extraction on Windows gives a different (wrong) hash.
 - The ROA pipeline and the review closures are committed as one commit (2026-09-30) after a
   green full suite (3043 passes, 2 intentional GFL skips, no failures, 14.5 min).
-- Step 4 (the port-power audit) and the review corrections (KCL re-solve of the trajectory
-  samples, GENROU's rotor port split with the rotor-loss proof) are committed on `master`
-  but not pushed; the full suite passed with them (3065 passes, 2 intentional GFL skips, no
-  failures). Push when the user says so. The first CI run with pack v6 (`f53bfa0`) was still running when
-  the session moved on; the user checks it.
+- Commit state at the end of the 2026-09-30 session: `origin/master` is at `cdc429b`
+  (`rotor_gradient_metric`, the GENROU strain-energy result; everything before it pushed
+  too). Still uncommitted: the reviewer's revisions of `README.md`,
+  `docs/LITERATURE_FINDINGS.md` and this file (the reframed 5a claims, the field-port
+  decision, this hand-off) and the removal of `AGENTS.md` (the user found it unnecessary;
+  its standing rules are summarised in "Start here"). The last full suite: 3123 passes, 2
+  intentional GFL skips, no failures (before `cdc429b`, whose `ph` tests pass).
 - Committed on 2026-10-01 after a green local suite (2926 passes, 2 intentional GFL skips,
   no failures): converter IDA comparison report-only in P7 (BDF1 is the check there); the
   droop P6 residual exception (2e-12 on its two measured-current rows, every other row
