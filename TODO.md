@@ -244,6 +244,14 @@ discussed with the user before they are implemented.
      rate storage and, if needed, a certificate-only dynamic-supply/IQC extension. Nonzero curl
      cannot be removed by a coordinate change, and cyclo-dissipativity alone is not an ROA
      certificate.
+   - **Method decision (2026-09-30): structured scalar `H_ext` first; dynamic extension as
+     fallback.** Complete the polar balance and reproduce the recent two-axis strain-energy
+     identity before freezing the candidate. Then use Route B's verified matrix to select a
+     sparse, rotation-invariant set of exact scalar machine-controller and cross-machine terms;
+     label nonphysical terms explicitly as certificate terms. Require a positive Bregman
+     Hessian and a useful local decay margin before attempting the nonlinear interval proof.
+     If no such static candidate survives those gates, test Krasovskii/Brayton-Moser rate
+     storage, followed only then by a certificate-only dynamic-supply/IQC extension.
 5. **Polar ports and the network balance** (Route A'): derive the conjugate polar supply from
    the network energy balance (do not assume (P, omega) and (Q, |V|) are the right pairs);
    test the lossless network first, then quantify the passivity shortage from the

@@ -10,9 +10,10 @@ written entirely in Julia, where the same model code runs both the simulation an
 > initialisation, BDF1 and IDA simulation, the PowerFactory driver, and the port-Hamiltonian
 > audits (P0 to P7, P10). The ROA certificate pipeline (P11) is in place for the quadratic
 > candidate `V_P`: a rigorous local certificate for the retained 171-dimensional physical
-> quotient of the synchronous IEEE-39 model. The active work is Target B (a physical storage
-> `H_ext` as the Lyapunov function). The plan is in [docs/ROADMAP.md](docs/ROADMAP.md) and
-> the current state in [TODO.md](TODO.md).
+> quotient of the synchronous IEEE-39 model. The active work is Target B: keeping physical
+> storage at the core of a scalar Lyapunov function `H_ext`. The plan is in
+> [docs/ROADMAP.md](docs/ROADMAP.md), the current state in [TODO.md](TODO.md), and the
+> supporting literature in [docs/LITERATURE_FINDINGS.md](docs/LITERATURE_FINDINGS.md).
 
 ---
 
@@ -474,14 +475,52 @@ The full plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
   - Fault reach without simulation, proving `dV_P/dt ≤ a V_P + b` on the fault-on field. This
     gives a **certified CCT lower bound**.
   - Falsification evidence.
-- **II.2 Making the Hamiltonian `H` itself a Lyapunov function (Target B).**
-  - Add the network potential `U_net` to the storage.
-  - A PH-informed storage LMI to find the cross-terms that are needed.
+- **II.2 Making `H` a certified Lyapunov function (Target B).**
+  - Keep the physical machine storage as the interpretable core of a scalar `H_ext`.
+  - Treat GENROU's non-closed stator-exchange one-form as an explicit decay shortage; it is
+    not a scalar `V_cross`, and no coordinate change can make it one.
+  - A PH-informed storage LMI to find exact scalar cross-terms that restore positivity and
+    decay.
   - Nonlinear storage terms, each with a stated physical origin.
-  - Decay repair: passivity indices, KYP/IQC supply rates, new ports, physical extensions.
+  - Decay repair: passivity indices, Krasovskii/Brayton-Moser rate storage, KYP/IQC dynamic
+    supply rates, new ports and physical extensions.
   - Closure of the network port.
   - Storage for converter controllers.
   - Certification of the non-quadratic `H_ext`.
+
+### A non-exact exchange and the Target-B contribution
+
+The GENROU audit exposed a structural obstruction. In current-corrected rotor coordinates
+`w = z - D i`, the rotor loss is positive and the steady-state inconsistency disappears, but
+the complementary stator exchange is the work one-form `w' Q D dI` on the network's KCL
+branch. Its curl is nonzero on both the IEEE-39 network and a lossless variant. It is therefore
+not the differential of any scalar network energy, and the obstruction cannot be removed by
+changing reference angle or using polar coordinates.
+
+The literature calls this a **non-closed work/supply one-form**, a **circulatory force**, or a
+**non-integrable differential supply**. Established remedies quantify a passivity shortage,
+construct a different exact scalar Lyapunov function, use Krasovskii/Brayton-Moser rate
+storage, lift the certificate to differential/geodesic space, or introduce a dynamic
+supply-rate/IQC filter. Relevant foundations include shifted passivity
+([Monshizadeh et al., 2019](https://doi.org/10.1016/j.sysconle.2018.10.010)),
+equilibrium-independent dissipativity
+([Simpson-Porco, 2019](https://doi.org/10.1109/TAC.2018.2838664)), Krasovskii passivity
+([Kawano et al., 2021](https://doi.org/10.1109/TAC.2020.3040252)), and dynamic supply rates
+([Khong et al., 2025](https://doi.org/10.1016/j.automatica.2024.112000)). The closest
+generator-specific result proves an equilibrium-independent passivity characterization for
+two-axis machines through losslessness and strain-energy convexity
+([Nishino, Chakrabortty and Ishizaki, 2026](https://doi.org/10.1109/TAC.2025.3609489)); its
+extension to GENROU's additional rotor circuits is not established.
+
+Porthos therefore uses `H` to mean the final scalar Lyapunov function, without claiming that
+every term is literal physical energy. The planned contribution is to retain physical storage
+as the core, prove the non-exact obstruction, add only well-defined scalar cross-terms or
+certificate dynamics, and certify positivity and decay for the resulting `H_ext` with interval
+arithmetic on the DAE quotient. The complete findings, 30 core references, six cross-field
+references and experiment order are in
+[docs/LITERATURE_FINDINGS.md](docs/LITERATURE_FINDINGS.md). This is presently a candidate
+research contribution; a broader novelty search and the completed `H_ext` proof are required
+before making a priority claim.
 - **II.3 Physical converter models.** The dc link, LCL filter and inner current loop as real
   port-Hamiltonian storage, replacing the reservoir account.
 
