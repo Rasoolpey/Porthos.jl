@@ -3,10 +3,11 @@
 Read this first in a new session, then `docs/ROADMAP.md` (its Part I banner: parity is
 frozen) and `README.md`. Updated at the end of every session.
 
-Last reviewed: 2026-09-30 (the storage completion done and rejected as the primary physical
-H_ext under rule 4; kept as the benchmark `V_completion`; the two closing diagnostics: the
-decay-rate bisection done, the backward block elimination running; next the small-system
-physical extension).
+Last reviewed: 2026-10-01 (the storage completion is rejected as the primary physical
+`H_ext` under rule 4 and retained as the benchmark `V_completion`; both closing diagnostics
+are done: the decay-rate bisection and the backward block elimination, whose irreducible
+pattern keeps 31 of 40 units and 95 % of the repair entries; next is gate 1 of the
+small-system physical extension, `docs/PHYSICAL_EXTENSION.md`).
 
 ## Start here (hand-off for the next conversation)
 
@@ -134,14 +135,54 @@ open-ended sparsity run:
   bound with cond about 1e5.
 - *Backward block elimination* at `mu = 0.006`, cap `1e5` (40 units: the 39 recorded pairs and
   the swing block; each test re-closes the pattern). A test is: the uncapped max-margin
-  problem at rate `mu` (a converged `t < 0` is an infeasibility certificate even without a
-  cap, saved with its duals); if feasible but worse conditioned than the cap, the capped
-  feasibility problem decides. Single-removal pass first (a block indispensable with all
-  others present is indispensable in every sub-pattern), then a sequential pass over the
-  individually removable ones. First results: `IEEET1_10 x IEEET1_11` indispensable; five
-  others removable; each removal takes out only 9 to 19 entries after re-closure. **In
-  progress** (about 12 minutes per test; three workers at most on this 16 GB machine; six
-  ran out of memory).
+  problem at rate `mu` (a converged `t < 0` gives a saved solver-level infeasibility
+  certificate with its duals, even without a cap); if feasible but worse conditioned than
+  the cap, the capped feasibility problem decides; "undecided" means feasible below the cap
+  only at a rate just under `0.99 mu`, or the capped solve hit its time limit. All verdicts
+  are conditional on
+  this pattern, `mu = 0.006` and `cond(P) <= 1e5`; they are Float64 solver results (the
+  saved duals are not yet interval-checked). Feasibility is monotone in the allowed blocks,
+  so a block indispensable against an accepted set stays indispensable when more blocks are
+  removed.
+  **Phase 1, single removals (done, 40 of 40):** 8 blocks indispensable with every other
+  block present: `IEEET1_10 x IEEET1_11`, `GENROU_1 x IEEET1_10`, `GENROU_1 x GENROU_11`,
+  `GENROU_11 x GENROU_9`, `GENROU_6 x GENROU_7`, `GENROU_5 x GENROU_7`,
+  `GENROU_10 x GENROU_10` and the swing block; 31 removable alone; 1 undecided
+  (`GENROU_8 x GENROU_8`, rate 0.005936). Each removal takes out only 9 to 24 entries after
+  re-closure.
+  **Phase 2, batched removal of the 32 candidates (done, 2026-10-01; one worker, about 15
+  minutes per solve):** removing all 32 together fails (666 entries), as do both halves; the
+  blocks substitute for one another. **Jointly removable, with rate and cap kept: 9 blocks**
+  (`GENROU_10 x GENROU_11`, `IEEET1_6 x IEEET1_9`, `IEEET1_5 x IEEET1_9`,
+  `GENROU_4 x GENROU_7`, `IEEET1_5 x IEEET1_6`, `IEEET1_7 x IEEET1_8`, `IEEET1_4 x IEEET1_5`,
+  `GENROU_11 x IEEET1_9`, `IEEET1_10 x IEEET1_4`). After the invariant re-closure they remove
+  only **109 of the 2070 repair entries (5 %)**: the other blocks re-cover most of their
+  angle entries.
+  **Phase 3, final pass (done):** every block neither accepted nor already indispensable
+  against an accepted subset was retested alone against the final 9 (capped solves allowed
+  1200 s); the pass removed nothing, so the procedure is at its fixed point. Against the
+  final accepted set: **indispensable, the 8 of phase 1 plus 21 more** (`IEEET1_4 x IEEET1_6`,
+  `GENROU_11 x GENROU_8`, `IEEET1_4 x IEEET1_8`, `IEEET1_10 x IEEET1_9`,
+  `GENROU_10 x GENROU_9`, `GENROU_1 x IEEET1_5`, `GENROU_1 x IEEET1_6`,
+  `GENROU_11 x GENROU_2`, `IEEET1_10 x IEEET1_7`, `GENROU_10 x GENROU_8`,
+  `GENROU_2 x GENROU_3`, `GENROU_11 x GENROU_3`, `GENROU_10 x GENROU_4`,
+  `GENROU_4 x GENROU_8`, `GENROU_11 x GENROU_7`, `IEEET1_10 x IEEET1_2`,
+  `IEEET1_2 x IEEET1_5`, `GENROU_8 x GENROU_8`, `GENROU_3 x GENROU_4`, `IEEET1_4 x IEEET1_7`,
+  `GENROU_7 x GENROU_9`; the last four were undecided against fewer accepted blocks);
+  **undecided, kept in the pattern: 2** (`GENROU_3 x GENROU_8`, `GENROU_10 x GENROU_3`:
+  feasible uncapped only above the cap; the capped solve hits its time limit).
+  **Result:** the irreducible pattern keeps 31 of the 40 units, 2697 free entries
+  (736 own-unit controller, **1961 repair, 13.3 % of the symmetric matrix**). It is
+  irreducible for this algorithm and ordering, not necessarily a globally sparsest pattern.
+  It keeps inter-unit exciter-exciter, machine-machine and big-machine-exciter couplings,
+  machines' own blocks and the swing block; every indispensable verdict comes with a
+  converged negative margin. This supports the rule-4 conclusion: broad mathematical
+  coupling is required by this reduced linear model and certificate class at this rate and
+  conditioning, rather than being introduced solely by the greedy search. It does not make
+  those blocks physical energy or prove that the plant has a corresponding two-component
+  energy store. The study is closed; the method is in `completion_rate_feasibility`,
+  `generalized_decay_rate` and `invariant_closure` (the driver scripts were session
+  scratch work).
 
 Then move to a physical extension, but treat it as a machine-network-load-controller model,
 not a π-line-only change. Retain dynamic line/bus electromagnetic energy, close shunt and
@@ -149,6 +190,68 @@ ComplexLoad power through specified passive load dynamics, and give the exciter 
 governor actuator/steam paths physical two-way storage ports. Re-run the own-unit passivity
 and compositional-storage gates before an IEEE-39 model is built. Stage 1 already shows that
 network lifting alone may leave the AVR/swing inter-unit obstruction.
+
+**Physical-extension design decision (2026-09-30; one-page design note in
+`docs/PHYSICAL_EXTENSION.md`).** Build this as a separate balanced
+electromagnetic dq model; do not modify the frozen RMS case models. The IEEE DC1A, IEEEG1 and
+IEEEG3 blocks are reduced stability-study transfer models: their time constants do not by
+themselves identify inductances, capacitances, moving masses or thermodynamic storage. Do not
+attach guessed physical Hamiltonians to their existing lag states.
+1. *Excitation:* the generator field-winding magnetic energy belongs to the full machine
+   Hamiltonian and must not be counted twice. Close its physical `(v_f, i_f)` port through an
+   averaged ideal converter and a DC-link capacitor,
+   `H_dc = C_dc v_dc^2/2`, with the modulation interconnection power preserving and field/DC
+   resistances explicit dissipation. Close the source side with an explicit supply model or
+   declare a fixed-voltage source as a chemostatted boundary and make the resulting ROA
+   conditional on it; never leave an unspecified power supply. Use a simple passive AVR for
+   the first structural test.
+   A rotating dc-commutator exciter is a later DC1A-specific variant only if its winding,
+   armature-reaction and shaft parameters are supplied; the DC1A `xe, TE, KE` block alone is
+   not enough to reconstruct that energy.
+2. *Prime mover:* make two pilots. For IEEEG3/hydro, use gate-servo hydraulic compliance,
+   penstock water-column kinetic energy and surge/head-tank gravitational/compliance energy;
+   start here because its mode is the spectral bottleneck. For IEEEG1/steam, use servo
+   hydraulic storage plus steam-chest/reheater **availability (exergy)** in pressure/mass
+   states, with enthalpy-flow ports and turbine shaft power. The existing lag states may be
+   matched as a reduced limit, not declared to be those energies without a parameter map.
+   Treat upstream head and boiler chemical potential as explicit chemostatted boundaries (or
+   model their finite reservoirs); state that condition in every attraction claim.
+3. *Electrical test system:* full winding/stator-flux synchronous machine, dynamic dq π line
+   (series inductor and shunt capacitor states), and a passive RLC load. This is a stiff
+   averaged electromagnetic model, not a switching EMT model. Prove the component power
+   balances and the total Dirac interconnection first; then show that setting the fast
+   derivatives to zero recovers the RMS stator, line and load stamps.
+4. Gate order: one hydro unit to an infinite bus; one steam unit; a two-machine steam/hydro
+   system; only then an IEEE-39 extension. At each gate require a convex shifted Hamiltonian,
+   local decay with own-unit or nearest-neighbour terms, and the singular-limit comparison.
+   If broad cross-unit completion returns in the two-machine model, record that the legacy
+   controllers rather than algebraic network elimination are the obstruction.
+5. Inputs for the first pilot are fixed in `docs/PHYSICAL_EXTENSION.md`. Derive the passive
+   converter output `y_m = g_m' grad(H_s)` and use passive PI damping
+   (`xi' = y_m`, `m-m_star = -k_p y_m-k_i xi`) while the modulation limit is inactive; set
+   `m_star` from the voltage target rather than assuming voltage error is power conjugate.
+   Feed the DC link from a fixed, declared DC chemostat through a finite source resistance.
+   Use IEEE-39 data for the electrical operating point and an adjacent line/RLC surrogate,
+   but use complete published benchmark data for hydro and steam storage parameters that the
+   RMS records do not identify. Every map and quasi-steady reduction is a gate, not an
+   assumption.
+
+**Upcoming steps (agreed 2026-10-01).**
+1. ~~Finish the elimination study, record it, commit and push~~ (done 2026-10-01).
+2. Next session: gate 1, one hydro unit to an infinite bus in the electromagnetic dq model
+   (`docs/PHYSICAL_EXTENSION.md`). Prove, in this order:
+   1. the equilibrium closes with `m = m_star`, the fixed DC boundary and `R_s > 0`;
+   2. the raw physical-energy balance closes exactly, including the source power and every
+      resistive and hydraulic loss;
+   3. the shifted unregulated identity has no unexplained residual and identifies its signed
+      dissipation. **Stop here if it has a positive residual outside the span of `y_m`:** the
+      proposed AVR cannot repair that through the modulation alone;
+   4. for `u = m - m_star`: `dH_s/dt(m_star + u) - dH_s/dt(m_star) = u y_m`, `y_m = g_m' grad H_s`;
+   5. with the PI controller: `dH_s/dt + dH_AVR/dt = dH_s/dt|_{m_star} - k_p y_m^2`;
+   6. the certified region stays strictly inside the modulation limits (limiter branches
+      afterwards).
+3. Then gate 2 (one steam unit), gate 3 (steam and hydro, two machines), and IEEE-39 only
+   after the first three pass (`docs/PHYSICAL_EXTENSION.md`, "Gates").
 
 Reuse: `strain_balance`, `strain_decay_forms`, `completion_problem`, `completion_pattern`,
 `structured_completion` (max margin, L1 or group sparsity), `storage_completion`,
