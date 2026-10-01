@@ -5,7 +5,7 @@ frozen) and `README.md`. Updated at the end of every session.
 
 Last reviewed: 2026-10-01 (the storage completion is rejected as the primary physical
 `H_ext` under rule 4 and retained as the benchmark `V_completion`; both closing diagnostics
-are done: the decay-rate bisection and the backward block elimination, whose irreducible
+are done: the decay-rate bisection and the backward block elimination, whose fixed-point
 pattern keeps 31 of 40 units and 95 % of the repair entries; next is gate 1 of the
 small-system physical extension, `docs/PHYSICAL_EXTENSION.md`).
 
@@ -171,9 +171,12 @@ open-ended sparsity run:
   `GENROU_7 x GENROU_9`; the last four were undecided against fewer accepted blocks);
   **undecided, kept in the pattern: 2** (`GENROU_3 x GENROU_8`, `GENROU_10 x GENROU_3`:
   feasible uncapped only above the cap; the capped solve hits its time limit).
-  **Result:** the irreducible pattern keeps 31 of the 40 units, 2697 free entries
-  (736 own-unit controller, **1961 repair, 13.3 % of the symmetric matrix**). It is
-  irreducible for this algorithm and ordering, not necessarily a globally sparsest pattern.
+  **Result:** the fixed-point pattern keeps 31 of the 40 units, 2697 free entries
+  (736 own-unit controller, **1961 repair, 13.3 % of the symmetric matrix**): 29
+  solver-indispensable blocks and 2 unresolved ones. It is a fixed point under the
+  procedure's acceptance rules and time limits, for this ordering; strict irreducibility is
+  not established for the 2 unresolved blocks, and it is not necessarily a globally sparsest
+  pattern.
   It keeps inter-unit exciter-exciter, machine-machine and big-machine-exciter couplings,
   machines' own blocks and the swing block; every indispensable verdict comes with a
   converged negative margin. This supports the rule-4 conclusion: broad mathematical
